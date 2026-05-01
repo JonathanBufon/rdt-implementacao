@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8045";
 const wsBaseUrl = apiBaseUrl.replace(/^http/, "ws");
 const LAYOUT_OPTIONS = ["spring", "random", "circular", "shell"];
 
@@ -71,11 +71,15 @@ function App() {
         }
         return response.json();
       })
-      .then((data) => setHealth(data.status))
-      .catch(() => setHealth("offline"));
-
-    loadTopology();
-    loadSimulationSettings();
+      .then((data) => {
+        setHealth(data.status);
+        loadTopology();
+        loadSimulationSettings();
+      })
+      .catch(() => {
+        setHealth("offline");
+        setTopologyStatus("error");
+      });
   }, []);
 
   function loadTopology() {
