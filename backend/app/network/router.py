@@ -7,6 +7,8 @@ from ..core.event_bus import EventBus
 from ..core.routing import RoutingTable
 from ..logging.router_logger import RouterLogger
 from .packet import Packet
+from .packet import checksum
+from .packet import has_valid_checksum
 
 
 class UdpRouter:
@@ -17,12 +19,15 @@ class UdpRouter:
         routing_table: RoutingTable,
         logger: RouterLogger,
         event_bus: EventBus,
+        fault_simulator: object | None = None,
     ) -> None:
         self.config = config
         self.router_addresses = router_addresses
         self.routing_table = routing_table
         self.logger = logger
         self.event_bus = event_bus
+        self.fault_simulator = fault_simulator
+        self._sent_packets: dict[int, Packet] = {}
         self._stop_event = Event()
         self._thread: Thread | None = None
         self._socket: socket.socket | None = None
@@ -49,6 +54,7 @@ class UdpRouter:
             self._thread = None
 
     def send_initial(self, packet: Packet) -> None:
+        self._sent_packets[packet.seq] = packet
         next_hop = self._next_hop(packet.destination)
         self._send(packet.at_router(self.config.id), next_hop)
         self.logger.write(
@@ -85,6 +91,10 @@ class UdpRouter:
             self._handle_packet(packet)
 
     def _handle_packet(self, packet: Packet) -> None:
+        if packet.type in {"ACK", "NAK"}:
+            self._handle_control_packet(packet)
+            return
+
         self.logger.write(
             self.config.id,
             "RECEIVED",
@@ -111,6 +121,24 @@ class UdpRouter:
             )
             return
 
+        packet = self._maybe_corrupt(packet)
+        if packet.rdt_version == "2.0" and not has_valid_checksum(packet):
+            self.logger.write(
+                self.config.id,
+                "CORRUPTED",
+                f"seq={packet.seq} source={packet.source} destination={packet.destination}",
+            )
+            self.event_bus.emit(
+                "PACKET_CORRUPTED",
+                seq=packet.seq,
+                router_id=self.config.id,
+                source=packet.source,
+                destination=packet.destination,
+                message=f"Roteador {self.config.id} detectou corrupção no DATA seq={packet.seq}",
+            )
+            self._send_control("NAK", packet)
+            return
+
         if packet.destination == self.config.id:
             self.logger.write(
                 self.config.id,
@@ -125,6 +153,8 @@ class UdpRouter:
                 destination=packet.destination,
                 message=f"Mensagem DATA seq={packet.seq} entregue no Roteador {self.config.id}",
             )
+            if packet.rdt_version == "2.0":
+                self._send_control("ACK", packet)
             return
 
         next_hop = self._next_hop(packet.destination)
@@ -143,6 +173,113 @@ class UdpRouter:
             next_hop=next_hop,
             message=f"Roteador {self.config.id} encaminhou DATA seq={packet.seq} para Roteador {next_hop}",
         )
+
+    def _handle_control_packet(self, packet: Packet) -> None:
+        event_name = "ACK_RECEIVED" if packet.type == "ACK" else "NAK_RECEIVED"
+        if packet.destination != self.config.id:
+            next_hop = self._next_hop(packet.destination)
+            self._send(packet.at_router(self.config.id), next_hop)
+            self.logger.write(
+                self.config.id,
+                "FORWARDED",
+                f"type={packet.type} seq={packet.seq} destination={packet.destination} next_hop={next_hop}",
+            )
+            self.event_bus.emit(
+                f"{packet.type}_FORWARDED",
+                seq=packet.seq,
+                router_id=self.config.id,
+                source=packet.source,
+                destination=packet.destination,
+                next_hop=next_hop,
+                message=f"Roteador {self.config.id} encaminhou {packet.type} seq={packet.seq} para Roteador {next_hop}",
+            )
+            return
+
+        self.logger.write(
+            self.config.id,
+            event_name,
+            f"seq={packet.seq} from={packet.source}",
+        )
+        self.event_bus.emit(
+            event_name,
+            seq=packet.seq,
+            router_id=self.config.id,
+            source=packet.source,
+            destination=packet.destination,
+            message=f"Roteador {self.config.id} recebeu {packet.type} seq={packet.seq}",
+        )
+
+        if packet.destination == self.config.id:
+            if packet.type == "NAK":
+                self._retry(packet.seq)
+
+    def _retry(self, seq: int) -> None:
+        packet = self._sent_packets.get(seq)
+        if packet is None:
+            self.logger.write(self.config.id, "FAILED", f"seq={seq} retry packet not found")
+            return
+
+        retry_packet = packet.with_attempt(packet.attempt + 1)
+        self.logger.write(
+            self.config.id,
+            "RETRY",
+            f"seq={seq} attempt={retry_packet.attempt} destination={retry_packet.destination}",
+        )
+        self.event_bus.emit(
+            "MESSAGE_RETRY",
+            seq=seq,
+            router_id=self.config.id,
+            source=retry_packet.source,
+            destination=retry_packet.destination,
+            attempt=retry_packet.attempt,
+            message=f"Roteador {self.config.id} retransmitiu DATA seq={seq}",
+        )
+        self.send_initial(retry_packet)
+
+    def _send_control(self, packet_type: str, packet: Packet) -> None:
+        route = self.routing_table.routes.get(packet.source)
+        if route is None:
+            self.logger.write(self.config.id, "FAILED", f"seq={packet.seq} no route to {packet.source}")
+            return
+
+        control_packet = Packet(
+            type=packet_type,  # type: ignore[arg-type]
+            rdt_version=packet.rdt_version,
+            seq=packet.seq,
+            source=self.config.id,
+            destination=packet.source,
+            current_router=self.config.id,
+            payload="",
+            checksum=checksum(packet.seq, self.config.id, packet.source, ""),
+            path=route.path,
+            attempt=packet.attempt,
+        )
+        next_hop = route.next_hop
+        self._send(control_packet, next_hop)
+
+        event_name = "ACK_SENT" if packet_type == "ACK" else "NAK_SENT"
+        self.logger.write(
+            self.config.id,
+            event_name,
+            f"seq={packet.seq} destination={packet.source} next_hop={next_hop}",
+        )
+        self.event_bus.emit(
+            event_name,
+            seq=packet.seq,
+            router_id=self.config.id,
+            source=self.config.id,
+            destination=packet.source,
+            next_hop=next_hop,
+            message=f"Roteador {self.config.id} enviou {packet_type} seq={packet.seq}",
+        )
+
+    def _maybe_corrupt(self, packet: Packet) -> Packet:
+        should_corrupt = False
+        if self.fault_simulator is not None:
+            should_corrupt = bool(self.fault_simulator.should_corrupt(packet))  # type: ignore[attr-defined]
+        if not should_corrupt:
+            return packet
+        return packet.with_checksum(f"corrupted-{packet.checksum}")
 
     def _next_hop(self, destination: int) -> int:
         route = self.routing_table.routes.get(destination)

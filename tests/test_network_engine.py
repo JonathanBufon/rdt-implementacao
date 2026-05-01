@@ -40,7 +40,7 @@ def test_network_engine_sends_data_hop_by_hop(tmp_path: Path) -> None:
         engine.stop()
 
 
-def test_network_engine_only_accepts_rdt_1_for_current_phase(tmp_path: Path) -> None:
+def test_network_engine_accepts_rdt_2_with_nak_retry_and_ack(tmp_path: Path) -> None:
     ports = _free_udp_ports(2)
     config_dir = tmp_path / "config"
     logs_dir = tmp_path / "logs"
@@ -52,15 +52,29 @@ def test_network_engine_only_accepts_rdt_1_for_current_phase(tmp_path: Path) -> 
     )
     (config_dir / "enlaces.config").write_text("1 2 1\n", encoding="utf-8")
 
-    engine = NetworkEngine(config_dir=config_dir, logs_dir=logs_dir)
+    engine = NetworkEngine(config_dir=config_dir, logs_dir=logs_dir, corruption_rate=1.0)
     engine.start()
     try:
-        try:
-            engine.send_message(1, 2, "Teste", "2.0")
-        except ValueError as exc:
-            assert str(exc) == "rdt_version must be 1.0 for the current phase"
-        else:
-            raise AssertionError("RDT 2.0 should not be accepted in phase 5")
+        response = engine.send_message(1, 2, "Teste", "2.0")
+        assert response["path"] == [1, 2]
+
+        _wait_for_event(engine, "MESSAGE_DELIVERED")
+
+        events = [event["type"] for event in engine.recent_events()]
+        assert "PACKET_CORRUPTED" in events
+        assert "NAK_SENT" in events
+        assert "NAK_RECEIVED" in events
+        assert "MESSAGE_RETRY" in events
+        assert "ACK_SENT" in events
+        assert "ACK_RECEIVED" in events
+
+        source_log = (logs_dir / "router_1.log").read_text(encoding="utf-8")
+        destination_log = (logs_dir / "router_2.log").read_text(encoding="utf-8")
+        assert "NAK_RECEIVED" in source_log
+        assert "RETRY" in source_log
+        assert "ACK_RECEIVED" in source_log
+        assert "CORRUPTED" in destination_log
+        assert "DELIVERED" in destination_log
     finally:
         engine.stop()
 

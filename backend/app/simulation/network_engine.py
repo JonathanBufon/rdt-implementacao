@@ -1,27 +1,31 @@
-from hashlib import sha256
 from pathlib import Path
 from threading import Lock
 
-from ..core.event_bus import EventBus
 from ..core.config_loader import TopologyConfig
 from ..core.config_loader import load_topology
+from ..core.event_bus import EventBus
 from ..core.routing import compute_all_routing_tables
 from ..logging.router_logger import RouterLogger
 from ..network.packet import Packet
+from ..network.packet import checksum
 from ..network.router import UdpRouter
 from ..rdt.base import ReliableDataTransferProtocol
 from ..rdt.rdt_1 import Rdt1Protocol
+from ..rdt.rdt_2 import Rdt2Protocol
+from .fault_simulator import FaultSimulator
 
-SUPPORTED_RDT_VERSIONS = {"1.0"}
+SUPPORTED_RDT_VERSIONS = {"1.0", "2.0"}
 
 
 class NetworkEngine:
-    def __init__(self, config_dir: Path, logs_dir: Path) -> None:
+    def __init__(self, config_dir: Path, logs_dir: Path, corruption_rate: float = 0.10) -> None:
         self.config_dir = config_dir
         self.logger = RouterLogger(logs_dir)
         self.event_bus = EventBus()
+        self.fault_simulator = FaultSimulator(corruption_rate=corruption_rate)
         self._protocols: dict[str, ReliableDataTransferProtocol] = {
             Rdt1Protocol.version: Rdt1Protocol(),
+            Rdt2Protocol.version: Rdt2Protocol(),
         }
         self._lock = Lock()
         self._seq = 0
@@ -43,6 +47,7 @@ class NetworkEngine:
                 routing_table=routing_tables[router.id],
                 logger=self.logger,
                 event_bus=self.event_bus,
+                fault_simulator=self.fault_simulator,
             )
             for router in topology.routers
         }
@@ -96,7 +101,7 @@ class NetworkEngine:
         if len(message) > 100:
             raise ValueError("message must have at most 100 characters")
         if rdt_version not in SUPPORTED_RDT_VERSIONS:
-            raise ValueError("rdt_version must be 1.0 for the current phase")
+            raise ValueError("rdt_version must be 1.0 or 2.0 for the current phase")
 
         if source not in self._routers:
             raise RuntimeError("network engine is not running")
@@ -115,7 +120,7 @@ class NetworkEngine:
             destination=destination,
             current_router=source,
             payload=message,
-            checksum=_checksum(seq, source, destination, message),
+            checksum=checksum(seq, source, destination, message),
             path=route.path,
             attempt=1,
         )
@@ -149,8 +154,3 @@ class NetworkEngine:
         with self._lock:
             self._seq += 1
             return self._seq
-
-
-def _checksum(seq: int, source: int, destination: int, payload: str) -> str:
-    content = f"{seq}:{source}:{destination}:{payload}".encode("utf-8")
-    return sha256(content).hexdigest()

@@ -1,6 +1,7 @@
 import json
 from dataclasses import asdict
 from dataclasses import dataclass
+from hashlib import sha256
 from typing import Literal
 
 
@@ -52,3 +53,45 @@ class Packet:
             path=self.path,
             attempt=self.attempt,
         )
+
+    def with_checksum(self, checksum: str) -> "Packet":
+        return Packet(
+            type=self.type,
+            rdt_version=self.rdt_version,
+            seq=self.seq,
+            source=self.source,
+            destination=self.destination,
+            current_router=self.current_router,
+            payload=self.payload,
+            checksum=checksum,
+            path=self.path,
+            attempt=self.attempt,
+        )
+
+    def with_attempt(self, attempt: int) -> "Packet":
+        return Packet(
+            type=self.type,
+            rdt_version=self.rdt_version,
+            seq=self.seq,
+            source=self.source,
+            destination=self.destination,
+            current_router=self.current_router,
+            payload=self.payload,
+            checksum=self.checksum,
+            path=self.path,
+            attempt=attempt,
+        )
+
+
+def checksum(seq: int, source: int, destination: int, payload: str) -> str:
+    content = f"{seq}:{source}:{destination}:{payload}".encode("utf-8")
+    return sha256(content).hexdigest()
+
+
+def has_valid_checksum(packet: Packet) -> bool:
+    return packet.checksum == checksum(
+        seq=packet.seq,
+        source=packet.source,
+        destination=packet.destination,
+        payload=packet.payload,
+    )
