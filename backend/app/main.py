@@ -5,6 +5,7 @@ from fastapi import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .core.config_loader import load_topology
+from .core.routing import compute_routing_table
 
 CONFIG_DIR = Path(__file__).resolve().parents[1] / "config"
 
@@ -38,3 +39,12 @@ def topology() -> dict[str, list[dict[str, int | str]]]:
         return load_topology(CONFIG_DIR).to_api_response()
     except ValueError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/routes/{router_id}")
+def routes(router_id: int) -> dict[str, int | dict[str, dict[str, int | list[int]]]]:
+    try:
+        topology_config = load_topology(CONFIG_DIR)
+        return compute_routing_table(topology_config, router_id).to_api_response()
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

@@ -77,11 +77,17 @@ h2 {
   color: #c82014;
 }
 
-.workspace {
+.workspace,
+.routes-section {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
   gap: 24px;
   padding: 32px clamp(18px, 4vw, 48px);
+}
+
+.routes-section {
+  grid-template-columns: 1fr;
+  padding-top: 0;
 }
 
 .panel {
@@ -190,17 +196,75 @@ h2 {
   margin-top: 24px;
 }
 
-.router-list article {
+.router-list button {
+  width: 100%;
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 12px;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.87);
+  border: 0;
   padding: 10px 0;
   border-top: 1px solid #edebe9;
   font-size: 14px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.router-list button:hover,
+.router-list .selected-router {
+  color: #00754a;
 }
 
 .router-list span {
   color: rgba(0, 0, 0, 0.58);
+}
+
+.routes-table-wrap {
+  overflow-x: auto;
+  margin-top: 20px;
+}
+
+.routes-table {
+  width: 100%;
+  min-width: 620px;
+  border-collapse: collapse;
+}
+
+.routes-table th,
+.routes-table td {
+  padding: 14px 12px;
+  border-bottom: 1px solid #edebe9;
+  text-align: left;
+  vertical-align: top;
+}
+
+.routes-table th {
+  color: rgba(0, 0, 0, 0.58);
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.routes-table td {
+  font-size: 15px;
+}
+
+.table-state {
+  display: grid;
+  place-items: center;
+  min-height: 140px;
+  margin-top: 20px;
+  color: rgba(0, 0, 0, 0.58);
+  border: 1px dashed #d4e9e2;
+  border-radius: 8px;
+}
+
+.table-error {
+  color: #c82014;
+  border-color: #c82014;
 }
 
 @media (max-width: 760px) {

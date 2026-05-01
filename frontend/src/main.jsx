@@ -8,6 +8,9 @@ function App() {
   const [health, setHealth] = useState("checking");
   const [topology, setTopology] = useState({ routers: [], links: [] });
   const [topologyStatus, setTopologyStatus] = useState("loading");
+  const [selectedRouterId, setSelectedRouterId] = useState(null);
+  const [routingTable, setRoutingTable] = useState({ router_id: null, routes: {} });
+  const [routesStatus, setRoutesStatus] = useState("idle");
 
   useEffect(() => {
     fetch(`${apiBaseUrl}/health`)
@@ -30,9 +33,30 @@ function App() {
       .then((data) => {
         setTopology(data);
         setTopologyStatus("ready");
+        setSelectedRouterId(data.routers[0]?.id ?? null);
       })
       .catch(() => setTopologyStatus("error"));
   }, []);
+
+  useEffect(() => {
+    if (selectedRouterId === null) {
+      return;
+    }
+
+    setRoutesStatus("loading");
+    fetch(`${apiBaseUrl}/routes/${selectedRouterId}`)
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Routes request failed");
+        }
+        return response.json();
+      })
+      .then((data) => {
+        setRoutingTable(data);
+        setRoutesStatus("ready");
+      })
+      .catch(() => setRoutesStatus("error"));
+  }, [selectedRouterId]);
 
   const routerPositions = buildRouterPositions(topology.routers);
 
@@ -80,15 +104,32 @@ function App() {
 
           <div className="router-list" aria-label="Roteadores configurados">
             {topology.routers.map((router) => (
-              <article key={router.id}>
+              <button
+                className={router.id === selectedRouterId ? "selected-router" : ""}
+                key={router.id}
+                onClick={() => setSelectedRouterId(router.id)}
+                type="button"
+              >
                 <strong>Roteador {router.id}</strong>
                 <span>
                   {router.ip}:{router.port}
                 </span>
-              </article>
+              </button>
             ))}
           </div>
         </aside>
+      </section>
+
+      <section className="routes-section">
+        <div className="panel routes-panel">
+          <div className="panel-header">
+            <h2>Tabela de Rotas</h2>
+            <span>
+              {selectedRouterId === null ? "Sem roteador" : `Roteador ${selectedRouterId}`}
+            </span>
+          </div>
+          <RoutingTable table={routingTable} status={routesStatus} />
+        </div>
       </section>
     </main>
   );
@@ -136,6 +177,47 @@ function NetworkGraph({ links, positions, status }) {
           {router.id}
         </div>
       ))}
+    </div>
+  );
+}
+
+function RoutingTable({ table, status }) {
+  if (status === "idle" || status === "loading") {
+    return <div className="table-state">Carregando rotas...</div>;
+  }
+
+  if (status === "error") {
+    return <div className="table-state table-error">Falha ao carregar rotas</div>;
+  }
+
+  const routes = Object.entries(table.routes);
+
+  if (routes.length === 0) {
+    return <div className="table-state">Nenhuma rota calculada</div>;
+  }
+
+  return (
+    <div className="routes-table-wrap">
+      <table className="routes-table">
+        <thead>
+          <tr>
+            <th>Destino</th>
+            <th>Próximo salto</th>
+            <th>Custo</th>
+            <th>Caminho</th>
+          </tr>
+        </thead>
+        <tbody>
+          {routes.map(([destination, route]) => (
+            <tr key={destination}>
+              <td>{destination}</td>
+              <td>{route.next_hop}</td>
+              <td>{route.cost}</td>
+              <td>{route.path.join(" -> ")}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
