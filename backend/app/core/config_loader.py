@@ -21,18 +21,36 @@ class TopologyConfig:
     routers: list[RouterConfig]
     links: list[LinkConfig]
     adjacency: dict[int, dict[int, int]]
+    router_positions: dict[int, tuple[float, float]] | None = None
+    layout: str = "spring"
+    generated_by: str = "file"
+    is_connected: bool = True
 
-    def to_api_response(self) -> dict[str, list[dict[str, int | str]]]:
+    def to_api_response(self) -> dict[str, object]:
         return {
             "routers": [
-                {"id": router.id, "ip": router.ip, "port": router.port}
+                {
+                    "id": router.id,
+                    "ip": router.ip,
+                    "port": router.port,
+                    "x": self._router_position(router.id)[0],
+                    "y": self._router_position(router.id)[1],
+                }
                 for router in sorted(self.routers, key=lambda router: router.id)
             ],
             "links": [
                 {"source": link.source, "target": link.target, "cost": link.cost}
                 for link in self.links
             ],
+            "layout": self.layout,
+            "generated_by": self.generated_by,
+            "is_connected": self.is_connected,
         }
+
+    def _router_position(self, router_id: int) -> tuple[float, float]:
+        if self.router_positions and router_id in self.router_positions:
+            return self.router_positions[router_id]
+        return (0.5, 0.5)
 
 
 def load_topology(config_dir: Path) -> TopologyConfig:

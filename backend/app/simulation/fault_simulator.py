@@ -1,4 +1,5 @@
 import random
+from threading import Lock
 
 from ..network.packet import Packet
 
@@ -14,21 +15,29 @@ class FaultSimulator:
         self.loss_rate = loss_rate
         self.rng = rng or random.Random()
         self._corrupted_once: set[int] = set()
+        self._lock = Lock()
+
+    def update_rates(self, loss_rate: float, corruption_rate: float) -> None:
+        with self._lock:
+            self.loss_rate = loss_rate
+            self.corruption_rate = corruption_rate
 
     def should_corrupt(self, packet: Packet) -> bool:
         if packet.rdt_version != "2.0" or packet.type != "DATA":
             return False
 
-        if packet.seq in self._corrupted_once:
-            return False
+        with self._lock:
+            if packet.seq in self._corrupted_once:
+                return False
 
-        should_corrupt = self.rng.random() < self.corruption_rate
-        if should_corrupt:
-            self._corrupted_once.add(packet.seq)
-        return should_corrupt
+            should_corrupt = self.rng.random() < self.corruption_rate
+            if should_corrupt:
+                self._corrupted_once.add(packet.seq)
+            return should_corrupt
 
     def should_drop(self, packet: Packet) -> bool:
         if packet.rdt_version != "3.0" or packet.type != "DATA":
             return False
 
-        return self.rng.random() < self.loss_rate
+        with self._lock:
+            return self.rng.random() < self.loss_rate

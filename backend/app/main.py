@@ -10,8 +10,8 @@ from fastapi import WebSocket
 from fastapi import WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from pydantic import Field
 
-from .core.routing import compute_routing_table
 from .simulation.network_engine import NetworkEngine
 
 CONFIG_DIR = Path(__file__).resolve().parents[1] / "config"
@@ -25,6 +25,37 @@ class SendMessageRequest(BaseModel):
     destination: int
     message: str
     rdt_version: str = "1.0"
+
+
+class SimulationSettingsRequest(BaseModel):
+    loss_rate: float | None = Field(default=None, ge=0, le=1)
+    corruption_rate: float | None = Field(default=None, ge=0, le=1)
+    timeout_seconds: float | None = Field(default=None, gt=0)
+    max_retries: int | None = Field(default=None, ge=1)
+
+
+class LinkCostRequest(BaseModel):
+    source: int
+    target: int
+    cost: int = Field(gt=0)
+
+
+class LinkRequest(BaseModel):
+    source: int
+    target: int
+
+
+class TopologyLayoutRequest(BaseModel):
+    layout: str = "spring"
+
+
+class RandomTopologyRequest(BaseModel):
+    nodes: int = Field(ge=5)
+    edges: int = Field(ge=0)
+    min_cost: int = Field(default=1, ge=1)
+    max_cost: int = Field(default=20, ge=1)
+    layout: str = "spring"
+    connected: bool = True
 
 
 @asynccontextmanager
@@ -61,7 +92,7 @@ def health() -> dict[str, str]:
 
 
 @app.get("/topology")
-def topology() -> dict[str, list[dict[str, int | str]]]:
+def topology() -> dict[str, object]:
     try:
         return engine.topology().to_api_response()
     except ValueError as exc:
@@ -71,8 +102,7 @@ def topology() -> dict[str, list[dict[str, int | str]]]:
 @app.get("/routes/{router_id}")
 def routes(router_id: int) -> dict[str, int | dict[str, dict[str, int | list[int]]]]:
     try:
-        topology_config = engine.topology()
-        return compute_routing_table(topology_config, router_id).to_api_response()
+        return engine.routing_table(router_id).to_api_response()
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -96,6 +126,79 @@ def send_message(payload: SendMessageRequest) -> dict[str, int | str | list[int]
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/simulation/settings")
+def simulation_settings() -> dict[str, float | int]:
+    return engine.simulation_settings()
+
+
+@app.patch("/simulation/settings")
+def update_simulation_settings(payload: SimulationSettingsRequest) -> dict[str, float | int]:
+    return engine.update_simulation_settings(
+        loss_rate=payload.loss_rate,
+        corruption_rate=payload.corruption_rate,
+        timeout_seconds=payload.timeout_seconds,
+        max_retries=payload.max_retries,
+    )
+
+
+@app.patch("/topology/links")
+def update_link_cost(payload: LinkCostRequest) -> dict[str, object]:
+    try:
+        return engine.update_link_cost(
+            source=payload.source,
+            target=payload.target,
+            cost=payload.cost,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/topology/links")
+def create_link(payload: LinkCostRequest) -> dict[str, object]:
+    try:
+        return engine.create_link(
+            source=payload.source,
+            target=payload.target,
+            cost=payload.cost,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/topology/links")
+def remove_link(payload: LinkRequest) -> dict[str, object]:
+    try:
+        return engine.remove_link(
+            source=payload.source,
+            target=payload.target,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/topology/layout")
+def update_topology_layout(payload: TopologyLayoutRequest) -> dict[str, object]:
+    try:
+        return engine.apply_layout(payload.layout)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/topology/random")
+def generate_random_topology(payload: RandomTopologyRequest) -> dict[str, object]:
+    try:
+        return engine.generate_random_topology(
+            nodes=payload.nodes,
+            edges=payload.edges,
+            min_cost=payload.min_cost,
+            max_cost=payload.max_cost,
+            layout=payload.layout,
+            connected=payload.connected,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

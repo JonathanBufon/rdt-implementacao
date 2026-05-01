@@ -126,48 +126,89 @@ h2 {
   inset: 0;
   width: 100%;
   height: 100%;
+  z-index: 0;
 }
 
-.network-graph line {
-  stroke: #1e3932;
-  stroke-width: 1.2;
-  opacity: 0.46;
+.network-graph .edge-layer line {
+  stroke: #8aa19b;
+  stroke-linecap: round;
+  stroke-opacity: 0.56;
+  stroke-width: 2.25px;
   transition: opacity 0.2s ease, stroke 0.2s ease, stroke-width 0.2s ease;
 }
 
-.network-graph .active-link line {
-  opacity: 1;
-  stroke-width: 3.2;
+.network-graph .edge-layer line.active-link {
   stroke: var(--tone-active);
+  stroke-opacity: 0.9;
+  stroke-width: 4px;
 }
 
-.network-graph.tone-success .active-link line {
+.network-graph .packet-layer {
+  pointer-events: none;
+}
+
+.network-graph .packet circle {
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.28));
+  stroke: #ffffff;
+  stroke-width: 0.75px;
+}
+
+.network-graph .packet text {
+  fill: #1e3932;
+  font-size: 4px;
+  font-weight: 800;
+  paint-order: stroke;
+  pointer-events: none;
+  stroke: #ffffff;
+  stroke-width: 0.9px;
+  text-anchor: middle;
+}
+
+.network-graph .packet-data circle {
+  fill: var(--tone-active);
+}
+
+.network-graph .packet-ack circle {
+  fill: var(--tone-success);
+}
+
+.network-graph .packet-nak circle {
+  fill: var(--tone-warning);
+}
+
+.network-graph.tone-success .edge-layer line.active-link {
   stroke: var(--tone-success);
 }
 
-.network-graph.tone-warning .active-link line {
+.network-graph.tone-warning .edge-layer line.active-link {
   stroke: var(--tone-warning);
   stroke-dasharray: 3 2;
 }
 
-.network-graph.tone-danger .active-link line {
+.network-graph.tone-danger .edge-layer line.active-link {
   stroke: var(--tone-danger);
   stroke-dasharray: 2 2;
 }
 
-.network-graph text {
-  fill: rgba(0, 0, 0, 0.68);
-  font-size: 4px;
-  font-weight: 800;
-  paint-order: stroke;
-  stroke: #ffffff;
-  stroke-width: 4px;
-  text-anchor: middle;
+.network-graph .edge-label {
+  position: absolute;
+  z-index: 1;
+  min-width: 24px;
+  border-radius: 8px;
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.86);
+  color: #4b5563;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.1;
+  pointer-events: none;
+  text-align: center;
+  transform: translate(-50%, -50%);
 }
 
 .router-node {
   position: absolute;
-  z-index: 1;
+  z-index: 2;
   display: inline-grid;
   place-items: center;
   width: 54px;
@@ -179,7 +220,7 @@ h2 {
   font-weight: 800;
   box-shadow: 0 0 6px rgba(0, 0, 0, 0.24), 0 8px 12px rgba(0, 0, 0, 0.14);
   transform: translate(-50%, -50%);
-  transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  transition: background 0.2s ease, box-shadow 0.2s ease, left 0.45s ease, top 0.45s ease, transform 0.2s ease;
 }
 
 .router-node.active-router {
@@ -201,6 +242,113 @@ h2 {
 .tone-danger .router-node.active-router {
   background: var(--tone-danger);
   box-shadow: 0 0 0 6px rgba(200, 32, 20, 0.18), 0 8px 14px rgba(0, 0, 0, 0.2);
+}
+
+.transient-effect {
+  position: absolute;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  animation: effect-pop 1.4s ease-out forwards;
+}
+
+.transient-effect span {
+  transform: translateY(-1px);
+}
+
+.effect-received,
+.effect-delivered {
+  background: var(--tone-success);
+  box-shadow: 0 0 0 9px rgba(0, 117, 74, 0.15);
+}
+
+.effect-drop,
+.effect-corrupted,
+.effect-failed {
+  background: var(--tone-danger);
+  box-shadow: 0 0 0 9px rgba(200, 32, 20, 0.15);
+}
+
+.effect-timeout,
+.effect-retry {
+  background: var(--tone-warning);
+  box-shadow: 0 0 0 9px rgba(183, 121, 31, 0.17);
+}
+
+.packet-legend {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px 12px;
+  max-width: min(100%, 540px);
+  border-radius: 8px 0 0 0;
+  background: rgba(255, 255, 255, 0.9);
+  color: #1e3932;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 8px 10px;
+}
+
+.packet-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.packet-legend b {
+  color: var(--tone-danger);
+  font-size: 13px;
+}
+
+.legend-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 3px rgba(0, 0, 0, 0.12);
+}
+
+.legend-data {
+  background: var(--tone-active);
+}
+
+.legend-ack {
+  background: var(--tone-success);
+}
+
+.legend-nak {
+  background: var(--tone-warning);
+}
+
+@keyframes effect-pop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.65);
+  }
+
+  15% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.08);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.42);
+  }
 }
 
 .network-state {
@@ -316,7 +464,8 @@ h2 {
   border-color: #c82014;
 }
 
-.message-form {
+.message-form,
+.control-form {
   display: grid;
   grid-template-columns: repeat(3, minmax(140px, 1fr)) minmax(220px, 2fr) auto;
   gap: 14px;
@@ -324,7 +473,16 @@ h2 {
   margin-top: 20px;
 }
 
-.message-form label {
+.control-form {
+  grid-template-columns: repeat(4, minmax(120px, 1fr)) auto;
+}
+
+.topology-control-form {
+  grid-template-columns: repeat(3, minmax(120px, 1fr)) auto auto;
+}
+
+.message-form label,
+.control-form label {
   display: grid;
   gap: 6px;
   color: rgba(0, 0, 0, 0.58);
@@ -334,7 +492,9 @@ h2 {
 }
 
 .message-form input,
-.message-form select {
+.message-form select,
+.control-form input,
+.control-form select {
   min-height: 42px;
   width: 100%;
   border: 1px solid rgba(0, 0, 0, 0.24);
@@ -345,7 +505,8 @@ h2 {
   padding: 8px 10px;
 }
 
-.message-form button {
+.message-form button,
+.control-form button {
   min-height: 42px;
   border: 1px solid #00754a;
   border-radius: 50px;
@@ -355,6 +516,26 @@ h2 {
   font: inherit;
   font-weight: 800;
   padding: 8px 18px;
+}
+
+.control-form .secondary-button {
+  border-color: #c82014;
+  background: #ffffff;
+  color: #c82014;
+}
+
+.control-form .checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  color: #1e3932;
+}
+
+.control-form .checkbox-field input {
+  min-height: auto;
+  width: 18px;
+  height: 18px;
 }
 
 .send-status {
@@ -463,7 +644,16 @@ h2 {
     min-height: 240px;
   }
 
-  .message-form {
+  .packet-legend {
+    justify-content: flex-start;
+    left: 0;
+    right: 0;
+    border-radius: 0;
+  }
+
+  .message-form,
+  .control-form,
+  .topology-control-form {
     grid-template-columns: 1fr;
   }
 

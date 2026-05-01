@@ -68,11 +68,15 @@ class UdpRouter:
         )
         self.event_bus.emit(
             "MESSAGE_SENT",
+            packet_type="DATA",
             seq=packet.seq,
             router_id=self.config.id,
+            current_router=self.config.id,
             source=packet.source,
             destination=packet.destination,
             next_hop=next_hop,
+            path=packet.path,
+            attempt=packet.attempt,
             message=f"Roteador {self.config.id} enviou DATA seq={packet.seq} para Roteador {next_hop}",
         )
 
@@ -91,6 +95,7 @@ class UdpRouter:
             for attempt in range(1, max_retries + 1):
                 current_packet = packet.with_attempt(attempt)
                 if attempt > 1:
+                    next_hop = self._next_hop(packet.destination)
                     self.logger.write(
                         self.config.id,
                         "RETRY",
@@ -98,10 +103,14 @@ class UdpRouter:
                     )
                     self.event_bus.emit(
                         "MESSAGE_RETRY",
+                        packet_type="DATA",
                         seq=packet.seq,
                         router_id=self.config.id,
+                        current_router=self.config.id,
                         source=packet.source,
                         destination=packet.destination,
+                        next_hop=next_hop,
+                        path=packet.path,
                         attempt=attempt,
                         message=f"Roteador {self.config.id} retransmitiu DATA seq={packet.seq}",
                     )
@@ -117,10 +126,13 @@ class UdpRouter:
                 )
                 self.event_bus.emit(
                     "TIMEOUT",
+                    packet_type="DATA",
                     seq=packet.seq,
                     router_id=self.config.id,
+                    current_router=self.config.id,
                     source=packet.source,
                     destination=packet.destination,
+                    path=packet.path,
                     attempt=attempt,
                     message=f"Roteador {self.config.id} entrou em timeout aguardando ACK seq={packet.seq}",
                 )
@@ -132,10 +144,13 @@ class UdpRouter:
             )
             self.event_bus.emit(
                 "MESSAGE_FAILED",
+                packet_type="DATA",
                 seq=packet.seq,
                 router_id=self.config.id,
+                current_router=self.config.id,
                 source=packet.source,
                 destination=packet.destination,
+                path=packet.path,
                 attempt=current_packet.attempt,
                 message=f"Mensagem DATA seq={packet.seq} falhou após {max_retries} tentativas",
             )
@@ -174,10 +189,14 @@ class UdpRouter:
         )
         self.event_bus.emit(
             "MESSAGE_RECEIVED",
+            packet_type="DATA",
             seq=packet.seq,
             router_id=self.config.id,
+            current_router=self.config.id,
             source=packet.source,
             destination=packet.destination,
+            path=packet.path,
+            attempt=packet.attempt,
             message=f"Roteador {self.config.id} recebeu DATA seq={packet.seq}",
         )
 
@@ -185,10 +204,14 @@ class UdpRouter:
             self.logger.write(self.config.id, "CORRUPTED", f"unsupported packet type={packet.type}")
             self.event_bus.emit(
                 "PACKET_CORRUPTED",
+                packet_type=packet.type,
                 seq=packet.seq,
                 router_id=self.config.id,
+                current_router=self.config.id,
                 source=packet.source,
                 destination=packet.destination,
+                path=packet.path,
+                attempt=packet.attempt,
                 message=f"Roteador {self.config.id} recebeu tipo de pacote inválido",
             )
             return
@@ -201,10 +224,14 @@ class UdpRouter:
             )
             self.event_bus.emit(
                 "PACKET_DROPPED",
+                packet_type="DATA",
                 seq=packet.seq,
                 router_id=self.config.id,
+                current_router=self.config.id,
                 source=packet.source,
                 destination=packet.destination,
+                path=packet.path,
+                attempt=packet.attempt,
                 message=f"Roteador {self.config.id} descartou DATA seq={packet.seq}",
             )
             return
@@ -218,10 +245,14 @@ class UdpRouter:
             )
             self.event_bus.emit(
                 "PACKET_CORRUPTED",
+                packet_type="DATA",
                 seq=packet.seq,
                 router_id=self.config.id,
+                current_router=self.config.id,
                 source=packet.source,
                 destination=packet.destination,
+                path=packet.path,
+                attempt=packet.attempt,
                 message=f"Roteador {self.config.id} detectou corrupção no DATA seq={packet.seq}",
             )
             self._send_control("NAK", packet)
@@ -235,10 +266,14 @@ class UdpRouter:
             )
             self.event_bus.emit(
                 "MESSAGE_DELIVERED",
+                packet_type="DATA",
                 seq=packet.seq,
                 router_id=self.config.id,
+                current_router=self.config.id,
                 source=packet.source,
                 destination=packet.destination,
+                path=packet.path,
+                attempt=packet.attempt,
                 message=f"Mensagem DATA seq={packet.seq} entregue no Roteador {self.config.id}",
             )
             if packet.rdt_version in {"2.0", "3.0"}:
@@ -254,11 +289,15 @@ class UdpRouter:
         )
         self.event_bus.emit(
             "MESSAGE_FORWARDED",
+            packet_type="DATA",
             seq=packet.seq,
             router_id=self.config.id,
+            current_router=self.config.id,
             source=packet.source,
             destination=packet.destination,
             next_hop=next_hop,
+            path=packet.path,
+            attempt=packet.attempt,
             message=f"Roteador {self.config.id} encaminhou DATA seq={packet.seq} para Roteador {next_hop}",
         )
 
@@ -274,11 +313,15 @@ class UdpRouter:
             )
             self.event_bus.emit(
                 f"{packet.type}_FORWARDED",
+                packet_type=packet.type,
                 seq=packet.seq,
                 router_id=self.config.id,
+                current_router=self.config.id,
                 source=packet.source,
                 destination=packet.destination,
                 next_hop=next_hop,
+                path=packet.path,
+                attempt=packet.attempt,
                 message=f"Roteador {self.config.id} encaminhou {packet.type} seq={packet.seq} para Roteador {next_hop}",
             )
             return
@@ -290,10 +333,14 @@ class UdpRouter:
         )
         self.event_bus.emit(
             event_name,
+            packet_type=packet.type,
             seq=packet.seq,
             router_id=self.config.id,
+            current_router=self.config.id,
             source=packet.source,
             destination=packet.destination,
+            path=packet.path,
+            attempt=packet.attempt,
             message=f"Roteador {self.config.id} recebeu {packet.type} seq={packet.seq}",
         )
 
@@ -321,10 +368,14 @@ class UdpRouter:
         )
         self.event_bus.emit(
             "MESSAGE_RETRY",
+            packet_type="DATA",
             seq=seq,
             router_id=self.config.id,
+            current_router=self.config.id,
             source=retry_packet.source,
             destination=retry_packet.destination,
+            next_hop=self._next_hop(retry_packet.destination),
+            path=retry_packet.path,
             attempt=retry_packet.attempt,
             message=f"Roteador {self.config.id} retransmitiu DATA seq={seq}",
         )
@@ -359,11 +410,15 @@ class UdpRouter:
         )
         self.event_bus.emit(
             event_name,
+            packet_type=packet_type,
             seq=packet.seq,
             router_id=self.config.id,
+            current_router=self.config.id,
             source=self.config.id,
             destination=packet.source,
             next_hop=next_hop,
+            path=control_packet.path,
+            attempt=control_packet.attempt,
             message=f"Roteador {self.config.id} enviou {packet_type} seq={packet.seq}",
         )
 
