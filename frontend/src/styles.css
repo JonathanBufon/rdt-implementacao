@@ -330,6 +330,40 @@ h2 {
   white-space: pre-wrap;
 }
 
+.event-timeline {
+  display: grid;
+  gap: 12px;
+  max-height: 360px;
+  overflow: auto;
+  margin: 20px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.event-timeline li {
+  display: grid;
+  grid-template-columns: 86px 160px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 12px 0;
+  border-bottom: 1px solid #edebe9;
+  font-size: 14px;
+}
+
+.event-timeline time {
+  color: rgba(0, 0, 0, 0.58);
+  font-variant-numeric: tabular-nums;
+}
+
+.event-timeline strong {
+  color: #006241;
+  overflow-wrap: anywhere;
+}
+
+.event-timeline span {
+  line-height: 1.45;
+}
+
 @media (max-width: 760px) {
   .top-bar,
   .workspace {
@@ -347,6 +381,10 @@ h2 {
   }
 
   .message-form {
+    grid-template-columns: 1fr;
+  }
+
+  .event-timeline li {
     grid-template-columns: 1fr;
   }
 }

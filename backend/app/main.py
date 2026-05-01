@@ -103,3 +103,8 @@ def logs(router_id: int) -> dict[str, int | list[str]]:
         raise HTTPException(status_code=404, detail=f"router {router_id} is not configured")
 
     return {"router_id": router_id, "lines": engine.read_logs(router_id)}
+
+
+@app.get("/events")
+def events() -> list[dict[str, object]]:
+    return engine.recent_events()

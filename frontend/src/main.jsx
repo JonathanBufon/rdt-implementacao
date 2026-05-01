@@ -19,6 +19,7 @@ function App() {
   });
   const [sendStatus, setSendStatus] = useState("");
   const [logs, setLogs] = useState([]);
+  const [events, setEvents] = useState([]);
 
   useEffect(() => {
     fetch(`${apiBaseUrl}/health`)
@@ -49,6 +50,37 @@ function App() {
         }));
       })
       .catch(() => setTopologyStatus("error"));
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    function loadEvents() {
+      fetch(`${apiBaseUrl}/events`)
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error("Events request failed");
+          }
+          return response.json();
+        })
+        .then((data) => {
+          if (active) {
+            setEvents(data);
+          }
+        })
+        .catch(() => {
+          if (active) {
+            setEvents([]);
+          }
+        });
+    }
+
+    loadEvents();
+    const intervalId = window.setInterval(loadEvents, 1000);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
   }, []);
 
   useEffect(() => {
@@ -214,8 +246,8 @@ function App() {
               Protocolo
               <select name="rdt_version" value={messageForm.rdt_version} onChange={updateMessageForm}>
                 <option value="1.0">RDT 1.0</option>
-                <option value="2.0">RDT 2.0</option>
-                <option value="3.0">RDT 3.0</option>
+                <option disabled value="2.0">RDT 2.0</option>
+                <option disabled value="3.0">RDT 3.0</option>
               </select>
             </label>
             <label className="message-field">
@@ -251,6 +283,14 @@ function App() {
           <pre className="log-output">
             {logs.length ? logs.join("\n") : "Sem logs para este roteador."}
           </pre>
+        </div>
+
+        <div className="panel events-panel">
+          <div className="panel-header">
+            <h2>Timeline</h2>
+            <span>Eventos recentes</span>
+          </div>
+          <EventTimeline events={events} />
         </div>
       </section>
     </main>
@@ -303,6 +343,24 @@ function NetworkGraph({ links, positions, status }) {
   );
 }
 
+function EventTimeline({ events }) {
+  if (!events.length) {
+    return <div className="table-state">Sem eventos recentes</div>;
+  }
+
+  return (
+    <ol className="event-timeline">
+      {events.slice().reverse().map((event, index) => (
+        <li key={`${event.timestamp}-${event.type}-${event.seq ?? index}`}>
+          <time>{formatTime(event.timestamp)}</time>
+          <strong>{event.type}</strong>
+          <span>{event.message ?? `Evento ${event.type}`}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 function RoutingTable({ table, status }) {
   if (status === "idle" || status === "loading") {
     return <div className="table-state">Carregando rotas...</div>;
@@ -342,6 +400,14 @@ function RoutingTable({ table, status }) {
       </table>
     </div>
   );
+}
+
+function formatTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
 function buildRouterPositions(routers) {

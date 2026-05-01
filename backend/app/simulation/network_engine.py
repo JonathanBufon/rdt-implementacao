@@ -2,20 +2,27 @@ from hashlib import sha256
 from pathlib import Path
 from threading import Lock
 
+from ..core.event_bus import EventBus
 from ..core.config_loader import TopologyConfig
 from ..core.config_loader import load_topology
 from ..core.routing import compute_all_routing_tables
 from ..logging.router_logger import RouterLogger
 from ..network.packet import Packet
 from ..network.router import UdpRouter
+from ..rdt.base import ReliableDataTransferProtocol
+from ..rdt.rdt_1 import Rdt1Protocol
 
-SUPPORTED_RDT_VERSIONS = {"1.0", "2.0", "3.0"}
+SUPPORTED_RDT_VERSIONS = {"1.0"}
 
 
 class NetworkEngine:
     def __init__(self, config_dir: Path, logs_dir: Path) -> None:
         self.config_dir = config_dir
         self.logger = RouterLogger(logs_dir)
+        self.event_bus = EventBus()
+        self._protocols: dict[str, ReliableDataTransferProtocol] = {
+            Rdt1Protocol.version: Rdt1Protocol(),
+        }
         self._lock = Lock()
         self._seq = 0
         self._topology: TopologyConfig | None = None
@@ -35,6 +42,7 @@ class NetworkEngine:
                 router_addresses=addresses,
                 routing_table=routing_tables[router.id],
                 logger=self.logger,
+                event_bus=self.event_bus,
             )
             for router in topology.routers
         }
@@ -44,6 +52,17 @@ class NetworkEngine:
 
         self._topology = topology
         self._routers = routers
+        self.event_bus.emit(
+            "NETWORK_STARTED",
+            router_count=len(topology.routers),
+            link_count=len(topology.links),
+            message="Rede UDP inicializada",
+        )
+        self.event_bus.emit(
+            "ROUTES_COMPUTED",
+            router_count=len(routing_tables),
+            message="Tabelas de roteamento calculadas com Dijkstra",
+        )
 
     def stop(self) -> None:
         for router in self._routers.values():
@@ -77,7 +96,7 @@ class NetworkEngine:
         if len(message) > 100:
             raise ValueError("message must have at most 100 characters")
         if rdt_version not in SUPPORTED_RDT_VERSIONS:
-            raise ValueError("rdt_version must be 1.0, 2.0 or 3.0")
+            raise ValueError("rdt_version must be 1.0 for the current phase")
 
         if source not in self._routers:
             raise RuntimeError("network engine is not running")
@@ -101,7 +120,16 @@ class NetworkEngine:
             attempt=1,
         )
 
-        self._routers[source].send_initial(packet)
+        self.event_bus.emit(
+            "MESSAGE_CREATED",
+            seq=seq,
+            router_id=source,
+            source=source,
+            destination=destination,
+            path=route.path,
+            message=f"Mensagem DATA seq={seq} criada com RDT {rdt_version}",
+        )
+        self._protocols[rdt_version].send(self._routers[source], packet)
 
         return {
             "status": "queued",
@@ -113,6 +141,9 @@ class NetworkEngine:
 
     def read_logs(self, router_id: int) -> list[str]:
         return self.logger.read(router_id)
+
+    def recent_events(self) -> list[dict[str, object]]:
+        return self.event_bus.recent()
 
     def _next_seq(self) -> int:
         with self._lock:

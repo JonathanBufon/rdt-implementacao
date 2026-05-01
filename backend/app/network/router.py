@@ -3,6 +3,7 @@ from threading import Event
 from threading import Thread
 
 from ..core.config_loader import RouterConfig
+from ..core.event_bus import EventBus
 from ..core.routing import RoutingTable
 from ..logging.router_logger import RouterLogger
 from .packet import Packet
@@ -15,11 +16,13 @@ class UdpRouter:
         router_addresses: dict[int, tuple[str, int]],
         routing_table: RoutingTable,
         logger: RouterLogger,
+        event_bus: EventBus,
     ) -> None:
         self.config = config
         self.router_addresses = router_addresses
         self.routing_table = routing_table
         self.logger = logger
+        self.event_bus = event_bus
         self._stop_event = Event()
         self._thread: Thread | None = None
         self._socket: socket.socket | None = None
@@ -53,6 +56,15 @@ class UdpRouter:
             "SENT",
             f'seq={packet.seq} destination={packet.destination} next_hop={next_hop} payload="{packet.payload}"',
         )
+        self.event_bus.emit(
+            "MESSAGE_SENT",
+            seq=packet.seq,
+            router_id=self.config.id,
+            source=packet.source,
+            destination=packet.destination,
+            next_hop=next_hop,
+            message=f"Roteador {self.config.id} enviou DATA seq={packet.seq} para Roteador {next_hop}",
+        )
 
     def _serve(self) -> None:
         while not self._stop_event.is_set():
@@ -78,9 +90,25 @@ class UdpRouter:
             "RECEIVED",
             f"seq={packet.seq} source={packet.source} destination={packet.destination}",
         )
+        self.event_bus.emit(
+            "MESSAGE_RECEIVED",
+            seq=packet.seq,
+            router_id=self.config.id,
+            source=packet.source,
+            destination=packet.destination,
+            message=f"Roteador {self.config.id} recebeu DATA seq={packet.seq}",
+        )
 
         if packet.type != "DATA":
             self.logger.write(self.config.id, "CORRUPTED", f"unsupported packet type={packet.type}")
+            self.event_bus.emit(
+                "PACKET_CORRUPTED",
+                seq=packet.seq,
+                router_id=self.config.id,
+                source=packet.source,
+                destination=packet.destination,
+                message=f"Roteador {self.config.id} recebeu tipo de pacote inválido",
+            )
             return
 
         if packet.destination == self.config.id:
@@ -88,6 +116,14 @@ class UdpRouter:
                 self.config.id,
                 "DELIVERED",
                 f'seq={packet.seq} source={packet.source} payload="{packet.payload}"',
+            )
+            self.event_bus.emit(
+                "MESSAGE_DELIVERED",
+                seq=packet.seq,
+                router_id=self.config.id,
+                source=packet.source,
+                destination=packet.destination,
+                message=f"Mensagem DATA seq={packet.seq} entregue no Roteador {self.config.id}",
             )
             return
 
@@ -97,6 +133,15 @@ class UdpRouter:
             self.config.id,
             "FORWARDED",
             f"seq={packet.seq} destination={packet.destination} next_hop={next_hop}",
+        )
+        self.event_bus.emit(
+            "MESSAGE_FORWARDED",
+            seq=packet.seq,
+            router_id=self.config.id,
+            source=packet.source,
+            destination=packet.destination,
+            next_hop=next_hop,
+            message=f"Roteador {self.config.id} encaminhou DATA seq={packet.seq} para Roteador {next_hop}",
         )
 
     def _next_hop(self, destination: int) -> int:
