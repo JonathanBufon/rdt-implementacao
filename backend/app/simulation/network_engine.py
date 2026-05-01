@@ -1,3 +1,4 @@
+import random
 from pathlib import Path
 from threading import Lock
 
@@ -12,20 +13,38 @@ from ..network.router import UdpRouter
 from ..rdt.base import ReliableDataTransferProtocol
 from ..rdt.rdt_1 import Rdt1Protocol
 from ..rdt.rdt_2 import Rdt2Protocol
+from ..rdt.rdt_3 import Rdt3Protocol
 from .fault_simulator import FaultSimulator
 
-SUPPORTED_RDT_VERSIONS = {"1.0", "2.0"}
+SUPPORTED_RDT_VERSIONS = {"1.0", "2.0", "3.0"}
 
 
 class NetworkEngine:
-    def __init__(self, config_dir: Path, logs_dir: Path, corruption_rate: float = 0.10) -> None:
+    def __init__(
+        self,
+        config_dir: Path,
+        logs_dir: Path,
+        corruption_rate: float = 0.10,
+        loss_rate: float = 0.10,
+        timeout_seconds: float = 2,
+        max_retries: int = 5,
+        rng: random.Random | None = None,
+    ) -> None:
         self.config_dir = config_dir
         self.logger = RouterLogger(logs_dir)
         self.event_bus = EventBus()
-        self.fault_simulator = FaultSimulator(corruption_rate=corruption_rate)
+        self.fault_simulator = FaultSimulator(
+            corruption_rate=corruption_rate,
+            loss_rate=loss_rate,
+            rng=rng,
+        )
         self._protocols: dict[str, ReliableDataTransferProtocol] = {
             Rdt1Protocol.version: Rdt1Protocol(),
             Rdt2Protocol.version: Rdt2Protocol(),
+            Rdt3Protocol.version: Rdt3Protocol(
+                timeout_seconds=timeout_seconds,
+                max_retries=max_retries,
+            ),
         }
         self._lock = Lock()
         self._seq = 0
@@ -101,7 +120,7 @@ class NetworkEngine:
         if len(message) > 100:
             raise ValueError("message must have at most 100 characters")
         if rdt_version not in SUPPORTED_RDT_VERSIONS:
-            raise ValueError("rdt_version must be 1.0 or 2.0 for the current phase")
+            raise ValueError("rdt_version must be 1.0, 2.0 or 3.0")
 
         if source not in self._routers:
             raise RuntimeError("network engine is not running")

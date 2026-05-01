@@ -1,5 +1,6 @@
 import socket
 from threading import Event
+from threading import Lock
 from threading import Thread
 
 from ..core.config_loader import RouterConfig
@@ -28,6 +29,8 @@ class UdpRouter:
         self.event_bus = event_bus
         self.fault_simulator = fault_simulator
         self._sent_packets: dict[int, Packet] = {}
+        self._ack_events: dict[int, Event] = {}
+        self._state_lock = Lock()
         self._stop_event = Event()
         self._thread: Thread | None = None
         self._socket: socket.socket | None = None
@@ -54,7 +57,8 @@ class UdpRouter:
             self._thread = None
 
     def send_initial(self, packet: Packet) -> None:
-        self._sent_packets[packet.seq] = packet
+        with self._state_lock:
+            self._sent_packets[packet.seq] = packet
         next_hop = self._next_hop(packet.destination)
         self._send(packet.at_router(self.config.id), next_hop)
         self.logger.write(
@@ -71,6 +75,74 @@ class UdpRouter:
             next_hop=next_hop,
             message=f"Roteador {self.config.id} enviou DATA seq={packet.seq} para Roteador {next_hop}",
         )
+
+    def send_stop_and_wait(
+        self,
+        packet: Packet,
+        timeout_seconds: float,
+        max_retries: int,
+    ) -> bool:
+        ack_event = Event()
+        with self._state_lock:
+            self._ack_events[packet.seq] = ack_event
+
+        try:
+            current_packet = packet
+            for attempt in range(1, max_retries + 1):
+                current_packet = packet.with_attempt(attempt)
+                if attempt > 1:
+                    self.logger.write(
+                        self.config.id,
+                        "RETRY",
+                        f"seq={packet.seq} attempt={attempt} destination={packet.destination}",
+                    )
+                    self.event_bus.emit(
+                        "MESSAGE_RETRY",
+                        seq=packet.seq,
+                        router_id=self.config.id,
+                        source=packet.source,
+                        destination=packet.destination,
+                        attempt=attempt,
+                        message=f"Roteador {self.config.id} retransmitiu DATA seq={packet.seq}",
+                    )
+
+                self.send_initial(current_packet)
+                if ack_event.wait(timeout_seconds):
+                    return True
+
+                self.logger.write(
+                    self.config.id,
+                    "TIMEOUT",
+                    f"seq={packet.seq} destination={packet.destination} attempt={attempt}",
+                )
+                self.event_bus.emit(
+                    "TIMEOUT",
+                    seq=packet.seq,
+                    router_id=self.config.id,
+                    source=packet.source,
+                    destination=packet.destination,
+                    attempt=attempt,
+                    message=f"Roteador {self.config.id} entrou em timeout aguardando ACK seq={packet.seq}",
+                )
+
+            self.logger.write(
+                self.config.id,
+                "FAILED",
+                f"seq={packet.seq} destination={packet.destination} attempts={max_retries}",
+            )
+            self.event_bus.emit(
+                "MESSAGE_FAILED",
+                seq=packet.seq,
+                router_id=self.config.id,
+                source=packet.source,
+                destination=packet.destination,
+                attempt=current_packet.attempt,
+                message=f"Mensagem DATA seq={packet.seq} falhou após {max_retries} tentativas",
+            )
+            return False
+        finally:
+            with self._state_lock:
+                self._ack_events.pop(packet.seq, None)
 
     def _serve(self) -> None:
         while not self._stop_event.is_set():
@@ -121,6 +193,22 @@ class UdpRouter:
             )
             return
 
+        if self._should_drop(packet):
+            self.logger.write(
+                self.config.id,
+                "DROPPED",
+                f"seq={packet.seq} source={packet.source} destination={packet.destination}",
+            )
+            self.event_bus.emit(
+                "PACKET_DROPPED",
+                seq=packet.seq,
+                router_id=self.config.id,
+                source=packet.source,
+                destination=packet.destination,
+                message=f"Roteador {self.config.id} descartou DATA seq={packet.seq}",
+            )
+            return
+
         packet = self._maybe_corrupt(packet)
         if packet.rdt_version == "2.0" and not has_valid_checksum(packet):
             self.logger.write(
@@ -153,7 +241,7 @@ class UdpRouter:
                 destination=packet.destination,
                 message=f"Mensagem DATA seq={packet.seq} entregue no Roteador {self.config.id}",
             )
-            if packet.rdt_version == "2.0":
+            if packet.rdt_version in {"2.0", "3.0"}:
                 self._send_control("ACK", packet)
             return
 
@@ -210,11 +298,17 @@ class UdpRouter:
         )
 
         if packet.destination == self.config.id:
+            if packet.type == "ACK":
+                with self._state_lock:
+                    ack_event = self._ack_events.get(packet.seq)
+                if ack_event is not None:
+                    ack_event.set()
             if packet.type == "NAK":
                 self._retry(packet.seq)
 
     def _retry(self, seq: int) -> None:
-        packet = self._sent_packets.get(seq)
+        with self._state_lock:
+            packet = self._sent_packets.get(seq)
         if packet is None:
             self.logger.write(self.config.id, "FAILED", f"seq={seq} retry packet not found")
             return
@@ -280,6 +374,11 @@ class UdpRouter:
         if not should_corrupt:
             return packet
         return packet.with_checksum(f"corrupted-{packet.checksum}")
+
+    def _should_drop(self, packet: Packet) -> bool:
+        if self.fault_simulator is None:
+            return False
+        return bool(self.fault_simulator.should_drop(packet))  # type: ignore[attr-defined]
 
     def _next_hop(self, destination: int) -> int:
         route = self.routing_table.routes.get(destination)

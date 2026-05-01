@@ -247,7 +247,7 @@ function App() {
               <select name="rdt_version" value={messageForm.rdt_version} onChange={updateMessageForm}>
                 <option value="1.0">RDT 1.0</option>
                 <option value="2.0">RDT 2.0</option>
-                <option disabled value="3.0">RDT 3.0</option>
+                <option value="3.0">RDT 3.0</option>
               </select>
             </label>
             <label className="message-field">
