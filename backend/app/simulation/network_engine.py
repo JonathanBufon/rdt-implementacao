@@ -319,12 +319,6 @@ class NetworkEngine:
         layout: str,
         connected: bool,
     ) -> dict[str, object]:
-        current_router_count = len(self.topology().routers)
-        if self._routers and nodes != current_router_count:
-            raise ValueError(
-                "random topology can only use the current router count while UDP sockets are running"
-            )
-
         topology = self._graph().generate_random(
             nodes=nodes,
             edges=edges,
@@ -334,7 +328,7 @@ class NetworkEngine:
             connected=connected,
         )
         self._apply_topology(topology)
-        self._sync_router_addresses()
+        self._sync_udp_routers()
         self.event_bus.emit(
             "TOPOLOGY_RANDOM_GENERATED",
             nodes=nodes,
@@ -390,6 +384,37 @@ class NetworkEngine:
         addresses = {router.id: (router.ip, router.port) for router in self.topology().routers}
         for router in self._routers.values():
             router.router_addresses = addresses
+
+    def _sync_udp_routers(self) -> None:
+        if not self._routers:
+            return
+
+        topology = self.topology()
+        addresses = {router.id: (router.ip, router.port) for router in topology.routers}
+        configured_router_ids = set(addresses)
+
+        for router_id in list(self._routers):
+            if router_id not in configured_router_ids:
+                self._routers[router_id].stop()
+                del self._routers[router_id]
+
+        for router_config in topology.routers:
+            router = self._routers.get(router_config.id)
+            if router is None:
+                router = UdpRouter(
+                    config=router_config,
+                    router_addresses=addresses,
+                    routing_table=self._routing_tables[router_config.id],
+                    logger=self.logger,
+                    event_bus=self.event_bus,
+                    fault_simulator=self.fault_simulator,
+                )
+                router.start()
+                self._routers[router_config.id] = router
+                continue
+
+            router.router_addresses = addresses
+            router.routing_table = self._routing_tables[router_config.id]
 
     def _emit_routes_recomputed(self) -> None:
         self.event_bus.emit(

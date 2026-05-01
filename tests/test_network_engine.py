@@ -227,6 +227,49 @@ def test_network_engine_generates_random_topology_with_networkx(tmp_path: Path) 
     ]
 
 
+def test_network_engine_adds_udp_router_for_larger_random_topology(tmp_path: Path) -> None:
+    ports = _free_udp_ports(5)
+    config_dir = tmp_path / "config"
+    logs_dir = tmp_path / "logs"
+    config_dir.mkdir()
+
+    (config_dir / "roteador.config").write_text(
+        "\n".join(
+            [
+                f"1 {ports[0]} 127.0.0.1",
+                f"2 {ports[1]} 127.0.0.1",
+                f"3 {ports[2]} 127.0.0.1",
+                f"4 {ports[3]} 127.0.0.1",
+                f"5 {ports[4]} 127.0.0.1",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (config_dir / "enlaces.config").write_text("1 2 1\n2 3 1\n3 4 1\n4 5 1\n", encoding="utf-8")
+
+    engine = NetworkEngine(config_dir=config_dir, logs_dir=logs_dir)
+    engine.start()
+    try:
+        topology = engine.generate_random_topology(
+            nodes=6,
+            edges=7,
+            min_cost=1,
+            max_cost=20,
+            layout="spring",
+            connected=True,
+        )
+
+        assert len(topology["routers"]) == 6
+        assert len(topology["links"]) == 7
+        assert 6 in engine.routing_table(1).routes
+        response = engine.send_message(1, 6, "novo roteador", "1.0")
+        assert response["path"][0] == 1
+        assert response["path"][-1] == 6
+        _wait_for_event(engine, "MESSAGE_DELIVERED")
+    finally:
+        engine.stop()
+
+
 def test_network_engine_applies_networkx_layout(tmp_path: Path) -> None:
     config_dir = tmp_path / "config"
     logs_dir = tmp_path / "logs"

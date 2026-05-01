@@ -332,7 +332,18 @@ function App() {
 
   function updateRandomGraphForm(event) {
     const { checked, name, type, value } = event.target;
-    setRandomGraphForm((current) => ({ ...current, [name]: type === "checkbox" ? checked : value }));
+    setRandomGraphForm((current) => {
+      const next = { ...current, [name]: type === "checkbox" ? checked : value };
+      const connected = Boolean(next.connected);
+      const nodes = Number(next.nodes);
+      const edges = Number(next.edges);
+
+      if (connected && Number.isFinite(nodes) && Number.isFinite(edges) && edges < nodes - 1) {
+        next.edges = String(nodes - 1);
+      }
+
+      return next;
+    });
   }
 
   function updateLayoutForm(event) {
@@ -667,7 +678,7 @@ function App() {
             <label>
               Arestas
               <input
-                min="0"
+                min={randomGraphForm.connected ? Math.max(0, Number(randomGraphForm.nodes) - 1) : 0}
                 name="edges"
                 onChange={updateRandomGraphForm}
                 step="1"
