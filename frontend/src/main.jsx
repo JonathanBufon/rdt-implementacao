@@ -11,6 +11,14 @@ function App() {
   const [selectedRouterId, setSelectedRouterId] = useState(null);
   const [routingTable, setRoutingTable] = useState({ router_id: null, routes: {} });
   const [routesStatus, setRoutesStatus] = useState("idle");
+  const [messageForm, setMessageForm] = useState({
+    source: "",
+    destination: "",
+    message: "",
+    rdt_version: "1.0",
+  });
+  const [sendStatus, setSendStatus] = useState("");
+  const [logs, setLogs] = useState([]);
 
   useEffect(() => {
     fetch(`${apiBaseUrl}/health`)
@@ -34,6 +42,11 @@ function App() {
         setTopology(data);
         setTopologyStatus("ready");
         setSelectedRouterId(data.routers[0]?.id ?? null);
+        setMessageForm((current) => ({
+          ...current,
+          source: data.routers[0]?.id ? String(data.routers[0].id) : "",
+          destination: data.routers[1]?.id ? String(data.routers[1].id) : "",
+        }));
       })
       .catch(() => setTopologyStatus("error"));
   }, []);
@@ -58,7 +71,57 @@ function App() {
       .catch(() => setRoutesStatus("error"));
   }, [selectedRouterId]);
 
+  useEffect(() => {
+    if (selectedRouterId === null) {
+      return;
+    }
+
+    fetch(`${apiBaseUrl}/logs/${selectedRouterId}`)
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Logs request failed");
+        }
+        return response.json();
+      })
+      .then((data) => setLogs(data.lines))
+      .catch(() => setLogs([]));
+  }, [selectedRouterId, sendStatus]);
+
   const routerPositions = buildRouterPositions(topology.routers);
+
+  function updateMessageForm(event) {
+    const { name, value } = event.target;
+    setMessageForm((current) => ({ ...current, [name]: value }));
+  }
+
+  function submitMessage(event) {
+    event.preventDefault();
+    setSendStatus("Enviando...");
+
+    fetch(`${apiBaseUrl}/messages/send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        source: Number(messageForm.source),
+        destination: Number(messageForm.destination),
+        message: messageForm.message,
+        rdt_version: messageForm.rdt_version,
+      }),
+    })
+      .then((response) =>
+        response.json().then((data) => {
+          if (!response.ok) {
+            throw new Error(data.detail ?? "Falha no envio");
+          }
+          return data;
+        }),
+      )
+      .then((data) => {
+        setSendStatus(`Enfileirada seq=${data.seq} rota=${data.path.join(" -> ")}`);
+        setTimeout(() => setSendStatus((current) => `${current} `), 250);
+      })
+      .catch((error) => setSendStatus(error.message));
+  }
 
   return (
     <main className="app-shell">
@@ -121,6 +184,55 @@ function App() {
       </section>
 
       <section className="routes-section">
+        <div className="panel send-panel">
+          <div className="panel-header">
+            <h2>Enviar Mensagem</h2>
+            <span>UDP básico</span>
+          </div>
+          <form className="message-form" onSubmit={submitMessage}>
+            <label>
+              Origem
+              <select name="source" value={messageForm.source} onChange={updateMessageForm}>
+                {topology.routers.map((router) => (
+                  <option key={router.id} value={router.id}>
+                    Roteador {router.id}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Destino
+              <select name="destination" value={messageForm.destination} onChange={updateMessageForm}>
+                {topology.routers.map((router) => (
+                  <option key={router.id} value={router.id}>
+                    Roteador {router.id}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Protocolo
+              <select name="rdt_version" value={messageForm.rdt_version} onChange={updateMessageForm}>
+                <option value="1.0">RDT 1.0</option>
+                <option value="2.0">RDT 2.0</option>
+                <option value="3.0">RDT 3.0</option>
+              </select>
+            </label>
+            <label className="message-field">
+              Mensagem
+              <input
+                maxLength="100"
+                name="message"
+                onChange={updateMessageForm}
+                required
+                value={messageForm.message}
+              />
+            </label>
+            <button type="submit">Enviar</button>
+          </form>
+          {sendStatus && <p className="send-status">{sendStatus}</p>}
+        </div>
+
         <div className="panel routes-panel">
           <div className="panel-header">
             <h2>Tabela de Rotas</h2>
@@ -129,6 +241,16 @@ function App() {
             </span>
           </div>
           <RoutingTable table={routingTable} status={routesStatus} />
+        </div>
+
+        <div className="panel logs-panel">
+          <div className="panel-header">
+            <h2>Logs</h2>
+            <span>{selectedRouterId === null ? "Sem roteador" : `Roteador ${selectedRouterId}`}</span>
+          </div>
+          <pre className="log-output">
+            {logs.length ? logs.join("\n") : "Sem logs para este roteador."}
+          </pre>
         </div>
       </section>
     </main>

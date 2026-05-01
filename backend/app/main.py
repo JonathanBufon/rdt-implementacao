@@ -1,18 +1,41 @@
+from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
-from .core.config_loader import load_topology
 from .core.routing import compute_routing_table
+from .simulation.network_engine import NetworkEngine
 
 CONFIG_DIR = Path(__file__).resolve().parents[1] / "config"
+LOGS_DIR = Path(__file__).resolve().parents[1] / "logs"
+
+engine = NetworkEngine(config_dir=CONFIG_DIR, logs_dir=LOGS_DIR)
+
+
+class SendMessageRequest(BaseModel):
+    source: int
+    destination: int
+    message: str
+    rdt_version: str = "1.0"
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> Any:
+    engine.start()
+    try:
+        yield
+    finally:
+        engine.stop()
 
 app = FastAPI(
     title="RDT P2P Visualizer API",
     description="Control API for the UDP-based reliable P2P messaging simulator.",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -36,7 +59,7 @@ def health() -> dict[str, str]:
 @app.get("/topology")
 def topology() -> dict[str, list[dict[str, int | str]]]:
     try:
-        return load_topology(CONFIG_DIR).to_api_response()
+        return engine.topology().to_api_response()
     except ValueError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -44,7 +67,39 @@ def topology() -> dict[str, list[dict[str, int | str]]]:
 @app.get("/routes/{router_id}")
 def routes(router_id: int) -> dict[str, int | dict[str, dict[str, int | list[int]]]]:
     try:
-        topology_config = load_topology(CONFIG_DIR)
+        topology_config = engine.topology()
         return compute_routing_table(topology_config, router_id).to_api_response()
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/routers")
+def routers() -> list[dict[str, int | str]]:
+    try:
+        return engine.topology().to_api_response()["routers"]
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/messages/send")
+def send_message(payload: SendMessageRequest) -> dict[str, int | str | list[int]]:
+    try:
+        return engine.send_message(
+            source=payload.source,
+            destination=payload.destination,
+            message=payload.message,
+            rdt_version=payload.rdt_version,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/logs/{router_id}")
+def logs(router_id: int) -> dict[str, int | list[str]]:
+    router_ids = {router.id for router in engine.topology().routers}
+    if router_id not in router_ids:
+        raise HTTPException(status_code=404, detail=f"router {router_id} is not configured")
+
+    return {"router_id": router_id, "lines": engine.read_logs(router_id)}

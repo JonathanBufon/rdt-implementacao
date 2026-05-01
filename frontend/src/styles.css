@@ -267,6 +267,69 @@ h2 {
   border-color: #c82014;
 }
 
+.message-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(140px, 1fr)) minmax(220px, 2fr) auto;
+  gap: 14px;
+  align-items: end;
+  margin-top: 20px;
+}
+
+.message-form label {
+  display: grid;
+  gap: 6px;
+  color: rgba(0, 0, 0, 0.58);
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.message-form input,
+.message-form select {
+  min-height: 42px;
+  width: 100%;
+  border: 1px solid rgba(0, 0, 0, 0.24);
+  border-radius: 8px;
+  background: #ffffff;
+  color: rgba(0, 0, 0, 0.87);
+  font: inherit;
+  padding: 8px 10px;
+}
+
+.message-form button {
+  min-height: 42px;
+  border: 1px solid #00754a;
+  border-radius: 50px;
+  background: #00754a;
+  color: #ffffff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+  padding: 8px 18px;
+}
+
+.send-status {
+  margin-top: 14px;
+  color: #1e3932;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.log-output {
+  min-height: 180px;
+  max-height: 320px;
+  overflow: auto;
+  margin: 20px 0 0;
+  border-radius: 8px;
+  background: #1e3932;
+  color: #ffffff;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 16px;
+  white-space: pre-wrap;
+}
+
 @media (max-width: 760px) {
   .top-bar,
   .workspace {
@@ -281,5 +344,9 @@ h2 {
   .network-graph,
   .network-state {
     min-height: 240px;
+  }
+
+  .message-form {
+    grid-template-columns: 1fr;
   }
 }

@@ -1,0 +1,125 @@
+from hashlib import sha256
+from pathlib import Path
+from threading import Lock
+
+from ..core.config_loader import TopologyConfig
+from ..core.config_loader import load_topology
+from ..core.routing import compute_all_routing_tables
+from ..logging.router_logger import RouterLogger
+from ..network.packet import Packet
+from ..network.router import UdpRouter
+
+SUPPORTED_RDT_VERSIONS = {"1.0", "2.0", "3.0"}
+
+
+class NetworkEngine:
+    def __init__(self, config_dir: Path, logs_dir: Path) -> None:
+        self.config_dir = config_dir
+        self.logger = RouterLogger(logs_dir)
+        self._lock = Lock()
+        self._seq = 0
+        self._topology: TopologyConfig | None = None
+        self._routers: dict[int, UdpRouter] = {}
+
+    def start(self) -> None:
+        if self._routers:
+            return
+
+        topology = load_topology(self.config_dir)
+        routing_tables = compute_all_routing_tables(topology)
+        addresses = {router.id: (router.ip, router.port) for router in topology.routers}
+
+        routers = {
+            router.id: UdpRouter(
+                config=router,
+                router_addresses=addresses,
+                routing_table=routing_tables[router.id],
+                logger=self.logger,
+            )
+            for router in topology.routers
+        }
+
+        for router in routers.values():
+            router.start()
+
+        self._topology = topology
+        self._routers = routers
+
+    def stop(self) -> None:
+        for router in self._routers.values():
+            router.stop()
+        self._routers = {}
+        self._topology = None
+
+    def topology(self) -> TopologyConfig:
+        if self._topology is None:
+            return load_topology(self.config_dir)
+        return self._topology
+
+    def send_message(
+        self,
+        source: int,
+        destination: int,
+        message: str,
+        rdt_version: str,
+    ) -> dict[str, int | str | list[int]]:
+        topology = self.topology()
+        router_ids = {router.id for router in topology.routers}
+
+        if source not in router_ids:
+            raise ValueError(f"source router {source} is not configured")
+        if destination not in router_ids:
+            raise ValueError(f"destination router {destination} is not configured")
+        if source == destination:
+            raise ValueError("source and destination must be different")
+        if not message:
+            raise ValueError("message must not be empty")
+        if len(message) > 100:
+            raise ValueError("message must have at most 100 characters")
+        if rdt_version not in SUPPORTED_RDT_VERSIONS:
+            raise ValueError("rdt_version must be 1.0, 2.0 or 3.0")
+
+        if source not in self._routers:
+            raise RuntimeError("network engine is not running")
+
+        routing_table = compute_all_routing_tables(topology)[source]
+        route = routing_table.routes.get(destination)
+        if route is None:
+            raise ValueError(f"no route from {source} to {destination}")
+
+        seq = self._next_seq()
+        packet = Packet(
+            type="DATA",
+            rdt_version=rdt_version,
+            seq=seq,
+            source=source,
+            destination=destination,
+            current_router=source,
+            payload=message,
+            checksum=_checksum(seq, source, destination, message),
+            path=route.path,
+            attempt=1,
+        )
+
+        self._routers[source].send_initial(packet)
+
+        return {
+            "status": "queued",
+            "seq": seq,
+            "source": source,
+            "destination": destination,
+            "path": route.path,
+        }
+
+    def read_logs(self, router_id: int) -> list[str]:
+        return self.logger.read(router_id)
+
+    def _next_seq(self) -> int:
+        with self._lock:
+            self._seq += 1
+            return self._seq
+
+
+def _checksum(seq: int, source: int, destination: int, payload: str) -> str:
+    content = f"{seq}:{source}:{destination}:{payload}".encode("utf-8")
+    return sha256(content).hexdigest()
