@@ -2,6 +2,11 @@
   font-family: Inter, "Helvetica Neue", Helvetica, Arial, sans-serif;
   color: rgba(0, 0, 0, 0.87);
   background: #f2f0eb;
+  --tone-active: #2563eb;
+  --tone-success: #00754a;
+  --tone-warning: #b7791f;
+  --tone-danger: #c82014;
+  --tone-neutral: #1e3932;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -112,7 +117,7 @@ h2 {
 .network-graph,
 .network-state {
   position: relative;
-  min-height: 280px;
+  min-height: 340px;
   margin-top: 20px;
 }
 
@@ -125,7 +130,29 @@ h2 {
 
 .network-graph line {
   stroke: #1e3932;
-  stroke-width: 1.4;
+  stroke-width: 1.2;
+  opacity: 0.46;
+  transition: opacity 0.2s ease, stroke 0.2s ease, stroke-width 0.2s ease;
+}
+
+.network-graph .active-link line {
+  opacity: 1;
+  stroke-width: 3.2;
+  stroke: var(--tone-active);
+}
+
+.network-graph.tone-success .active-link line {
+  stroke: var(--tone-success);
+}
+
+.network-graph.tone-warning .active-link line {
+  stroke: var(--tone-warning);
+  stroke-dasharray: 3 2;
+}
+
+.network-graph.tone-danger .active-link line {
+  stroke: var(--tone-danger);
+  stroke-dasharray: 2 2;
 }
 
 .network-graph text {
@@ -152,6 +179,28 @@ h2 {
   font-weight: 800;
   box-shadow: 0 0 6px rgba(0, 0, 0, 0.24), 0 8px 12px rgba(0, 0, 0, 0.14);
   transform: translate(-50%, -50%);
+  transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.router-node.active-router {
+  background: var(--tone-active);
+  box-shadow: 0 0 0 6px rgba(37, 99, 235, 0.18), 0 8px 14px rgba(0, 0, 0, 0.2);
+  transform: translate(-50%, -50%) scale(1.08);
+}
+
+.tone-success .router-node.active-router {
+  background: var(--tone-success);
+  box-shadow: 0 0 0 6px rgba(0, 117, 74, 0.18), 0 8px 14px rgba(0, 0, 0, 0.2);
+}
+
+.tone-warning .router-node.active-router {
+  background: var(--tone-warning);
+  box-shadow: 0 0 0 6px rgba(183, 121, 31, 0.22), 0 8px 14px rgba(0, 0, 0, 0.2);
+}
+
+.tone-danger .router-node.active-router {
+  background: var(--tone-danger);
+  box-shadow: 0 0 0 6px rgba(200, 32, 20, 0.18), 0 8px 14px rgba(0, 0, 0, 0.2);
 }
 
 .network-state {
@@ -347,7 +396,9 @@ h2 {
   align-items: start;
   padding: 12px 0;
   border-bottom: 1px solid #edebe9;
+  border-left: 4px solid transparent;
   font-size: 14px;
+  padding-left: 10px;
 }
 
 .event-timeline time {
@@ -358,6 +409,38 @@ h2 {
 .event-timeline strong {
   color: #006241;
   overflow-wrap: anywhere;
+}
+
+.event-timeline .event-active {
+  border-left-color: var(--tone-active);
+}
+
+.event-timeline .event-success {
+  border-left-color: var(--tone-success);
+}
+
+.event-timeline .event-warning {
+  border-left-color: var(--tone-warning);
+}
+
+.event-timeline .event-danger {
+  border-left-color: var(--tone-danger);
+}
+
+.event-timeline .event-active strong {
+  color: var(--tone-active);
+}
+
+.event-timeline .event-success strong {
+  color: var(--tone-success);
+}
+
+.event-timeline .event-warning strong {
+  color: var(--tone-warning);
+}
+
+.event-timeline .event-danger strong {
+  color: var(--tone-danger);
 }
 
 .event-timeline span {

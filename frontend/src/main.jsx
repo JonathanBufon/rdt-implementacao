@@ -148,6 +148,7 @@ function App() {
   }, [selectedRouterId, events.length]);
 
   const routerPositions = buildRouterPositions(topology.routers);
+  const networkState = getLatestNetworkState(events);
 
   function updateMessageForm(event) {
     const { name, value } = event.target;
@@ -202,9 +203,12 @@ function App() {
             <span>Fase 8</span>
           </div>
           <NetworkGraph
+            activeLink={networkState.activeLink}
+            activeRouterId={networkState.activeRouterId}
             links={topology.links}
             positions={routerPositions}
             status={topologyStatus}
+            tone={networkState.tone}
           />
         </div>
 
@@ -337,7 +341,7 @@ function eventKey(event) {
   return `${event.timestamp}-${event.type}-${event.seq ?? ""}-${event.router_id ?? ""}-${event.line ?? ""}`;
 }
 
-function NetworkGraph({ links, positions, status }) {
+function NetworkGraph({ activeLink, activeRouterId, links, positions, status, tone }) {
   if (status === "loading") {
     return <div className="network-state">Carregando topologia...</div>;
   }
@@ -349,18 +353,19 @@ function NetworkGraph({ links, positions, status }) {
   const routers = Object.values(positions);
 
   return (
-    <div className="network-graph" aria-label="Topologia carregada">
+    <div className={`network-graph tone-${tone}`} aria-label="Topologia carregada">
       <svg viewBox="0 0 100 100" role="img" aria-label="Enlaces da rede">
         {links.map((link) => {
           const source = positions[link.source];
           const target = positions[link.target];
+          const isActive = isSameLink(activeLink, link);
 
           if (!source || !target) {
             return null;
           }
 
           return (
-            <g key={`${link.source}-${link.target}`}>
+            <g className={isActive ? "active-link" : ""} key={`${link.source}-${link.target}`}>
               <line x1={source.x} y1={source.y} x2={target.x} y2={target.y} />
               <text x={(source.x + target.x) / 2} y={(source.y + target.y) / 2}>
                 {link.cost}
@@ -372,7 +377,7 @@ function NetworkGraph({ links, positions, status }) {
 
       {routers.map((router) => (
         <div
-          className="router-node"
+          className={`router-node ${router.id === activeRouterId ? "active-router" : ""}`}
           key={router.id}
           style={{ left: `${router.x}%`, top: `${router.y}%` }}
         >
@@ -391,7 +396,7 @@ function EventTimeline({ events }) {
   return (
     <ol className="event-timeline">
       {events.slice().reverse().map((event, index) => (
-        <li key={`${event.timestamp}-${event.type}-${event.seq ?? index}`}>
+        <li className={`event-${eventTone(event.type)}`} key={`${event.timestamp}-${event.type}-${event.seq ?? index}`}>
           <time>{formatTime(event.timestamp)}</time>
           <strong>{event.type}</strong>
           <span>{event.message ?? `Evento ${event.type}`}</span>
@@ -439,6 +444,49 @@ function RoutingTable({ table, status }) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+function getLatestNetworkState(events) {
+  const visibleEvents = events.filter((event) => event.type !== "LOG_CREATED");
+  const latest = visibleEvents[visibleEvents.length - 1];
+  if (!latest) {
+    return { activeLink: null, activeRouterId: null, tone: "neutral" };
+  }
+
+  return {
+    activeLink: latest.next_hop
+      ? { source: latest.router_id, target: latest.next_hop }
+      : null,
+    activeRouterId: latest.router_id ?? latest.destination ?? null,
+    tone: eventTone(latest.type),
+  };
+}
+
+function eventTone(type) {
+  if (["PACKET_DROPPED", "PACKET_CORRUPTED", "MESSAGE_FAILED", "TIMEOUT"].includes(type)) {
+    return "danger";
+  }
+  if (["ACK_SENT", "ACK_RECEIVED", "ACK_FORWARDED", "MESSAGE_DELIVERED"].includes(type)) {
+    return "success";
+  }
+  if (["NAK_SENT", "NAK_RECEIVED", "NAK_FORWARDED", "MESSAGE_RETRY"].includes(type)) {
+    return "warning";
+  }
+  if (["MESSAGE_SENT", "MESSAGE_FORWARDED", "MESSAGE_RECEIVED", "MESSAGE_CREATED"].includes(type)) {
+    return "active";
+  }
+  return "neutral";
+}
+
+function isSameLink(activeLink, link) {
+  if (!activeLink) {
+    return false;
+  }
+
+  return (
+    (activeLink.source === link.source && activeLink.target === link.target) ||
+    (activeLink.source === link.target && activeLink.target === link.source)
   );
 }
 
