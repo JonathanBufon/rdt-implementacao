@@ -31,8 +31,8 @@ class NetworkEngine:
         rng: random.Random | None = None,
     ) -> None:
         self.config_dir = config_dir
-        self.logger = RouterLogger(logs_dir)
         self.event_bus = EventBus()
+        self.logger = RouterLogger(logs_dir, event_bus=self.event_bus)
         self.fault_simulator = FaultSimulator(
             corruption_rate=corruption_rate,
             loss_rate=loss_rate,
@@ -168,6 +168,12 @@ class NetworkEngine:
 
     def recent_events(self) -> list[dict[str, object]]:
         return self.event_bus.recent()
+
+    def subscribe_events(self):
+        return self.event_bus.subscribe()
+
+    def unsubscribe_events(self, subscriber) -> None:
+        self.event_bus.unsubscribe(subscriber)
 
     def _next_seq(self) -> int:
         with self._lock:

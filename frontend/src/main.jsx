@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import "./styles.css";
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+const wsBaseUrl = apiBaseUrl.replace(/^http/, "ws");
 
 function App() {
   const [health, setHealth] = useState("checking");
@@ -20,6 +21,7 @@ function App() {
   const [sendStatus, setSendStatus] = useState("");
   const [logs, setLogs] = useState([]);
   const [events, setEvents] = useState([]);
+  const [eventsConnection, setEventsConnection] = useState("connecting");
 
   useEffect(() => {
     fetch(`${apiBaseUrl}/health`)
@@ -54,34 +56,68 @@ function App() {
 
   useEffect(() => {
     let active = true;
+    let socket;
 
-    function loadEvents() {
-      fetch(`${apiBaseUrl}/events`)
-        .then((response) => {
-          if (!response.ok) {
-            throw new Error("Events request failed");
-          }
-          return response.json();
-        })
-        .then((data) => {
-          if (active) {
-            setEvents(data);
-          }
-        })
-        .catch(() => {
-          if (active) {
-            setEvents([]);
-          }
-        });
+    fetch(`${apiBaseUrl}/events`)
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Events request failed");
+        }
+        return response.json();
+      })
+      .then((data) => {
+        if (active) {
+          setEvents(data);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setEvents([]);
+        }
+      });
+
+    try {
+      socket = new WebSocket(`${wsBaseUrl}/ws/events`);
+    } catch (_error) {
+      setEventsConnection("offline");
+      return () => {
+        active = false;
+      };
     }
 
-    loadEvents();
-    const intervalId = window.setInterval(loadEvents, 1000);
+    socket.addEventListener("open", () => setEventsConnection("live"));
+    socket.addEventListener("close", () => setEventsConnection("offline"));
+    socket.addEventListener("error", () => setEventsConnection("offline"));
+    socket.addEventListener("message", (messageEvent) => {
+      const event = JSON.parse(messageEvent.data);
+      if (event.type === "HEARTBEAT") {
+        return;
+      }
+
+      setEvents((current) => appendUniqueEvent(current, event));
+    });
+
     return () => {
       active = false;
-      window.clearInterval(intervalId);
+      socket.close();
     };
   }, []);
+
+  function loadSelectedLogs() {
+    if (selectedRouterId === null) {
+      return;
+    }
+
+    fetch(`${apiBaseUrl}/logs/${selectedRouterId}`)
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Logs request failed");
+        }
+        return response.json();
+      })
+      .then((data) => setLogs(data.lines))
+      .catch(() => setLogs([]));
+  }
 
   useEffect(() => {
     if (selectedRouterId === null) {
@@ -108,16 +144,8 @@ function App() {
       return;
     }
 
-    fetch(`${apiBaseUrl}/logs/${selectedRouterId}`)
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error("Logs request failed");
-        }
-        return response.json();
-      })
-      .then((data) => setLogs(data.lines))
-      .catch(() => setLogs([]));
-  }, [selectedRouterId, sendStatus]);
+    loadSelectedLogs();
+  }, [selectedRouterId, events.length]);
 
   const routerPositions = buildRouterPositions(topology.routers);
 
@@ -171,7 +199,7 @@ function App() {
         <div className="panel network-panel">
           <div className="panel-header">
             <h2>Rede</h2>
-            <span>Fase 2</span>
+            <span>Fase 8</span>
           </div>
           <NetworkGraph
             links={topology.links}
@@ -219,7 +247,7 @@ function App() {
         <div className="panel send-panel">
           <div className="panel-header">
             <h2>Enviar Mensagem</h2>
-            <span>UDP básico</span>
+            <span>UDP + RDT</span>
           </div>
           <form className="message-form" onSubmit={submitMessage}>
             <label>
@@ -288,13 +316,25 @@ function App() {
         <div className="panel events-panel">
           <div className="panel-header">
             <h2>Timeline</h2>
-            <span>Eventos recentes</span>
+            <span>{eventsConnection === "live" ? "WebSocket ativo" : "Eventos recentes"}</span>
           </div>
           <EventTimeline events={events} />
         </div>
       </section>
     </main>
   );
+}
+
+function appendUniqueEvent(current, event) {
+  const key = eventKey(event);
+  if (current.some((item) => eventKey(item) === key)) {
+    return current;
+  }
+  return [...current, event].slice(-200);
+}
+
+function eventKey(event) {
+  return `${event.timestamp}-${event.type}-${event.seq ?? ""}-${event.router_id ?? ""}-${event.line ?? ""}`;
 }
 
 function NetworkGraph({ links, positions, status }) {

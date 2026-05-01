@@ -1,9 +1,13 @@
+import asyncio
 from contextlib import asynccontextmanager
+from queue import Empty
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
 from fastapi import HTTPException
+from fastapi import WebSocket
+from fastapi import WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -108,3 +112,24 @@ def logs(router_id: int) -> dict[str, int | list[str]]:
 @app.get("/events")
 def events() -> list[dict[str, object]]:
     return engine.recent_events()
+
+
+@app.websocket("/ws/events")
+async def websocket_events(websocket: WebSocket) -> None:
+    await websocket.accept()
+    for event in engine.recent_events():
+        await websocket.send_json(event)
+
+    subscriber = engine.subscribe_events()
+    try:
+        while True:
+            try:
+                event = await asyncio.to_thread(subscriber.get, True, 1)
+            except Empty:
+                await websocket.send_json({"type": "HEARTBEAT"})
+                continue
+            await websocket.send_json(event)
+    except WebSocketDisconnect:
+        pass
+    finally:
+        engine.unsubscribe_events(subscriber)
