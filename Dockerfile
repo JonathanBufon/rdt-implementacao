@@ -9,6 +9,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 COPY . .
-RUN mkdir -p logs
+RUN sed -i 's/\r$//' docker-entrypoint.sh \
+    && chmod +x docker-entrypoint.sh \
+    && mkdir -p logs
 
 ENTRYPOINT ["bash", "docker-entrypoint.sh"]
