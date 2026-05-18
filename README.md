@@ -58,6 +58,10 @@ Formato: `[ID_Origem] [ID_Destino] [Custo]` (enlaces bidirecionais)
 4 5 4
 ```
 
+Topologia resultante e caminho mais curto de 1 → 5: `1 → 3 → 5` (custo 7).
+
+Para modificar a topologia, edite os dois arquivos e reinicie todos os roteadores.
+
 ---
 
 ## Como executar
@@ -73,6 +77,8 @@ python3 main.py 5
 ```
 
 Todos os roteadores devem estar ativos antes de enviar mensagens.
+
+Para encerrar um roteador, pressione `Ctrl+C` ou digite `exit`.
 
 ---
 
@@ -96,12 +102,20 @@ Limite: **100 caracteres** por mensagem.
 
 ## Saída esperada no console
 
+Fluxo sem perdas:
+
 ```
-Roteador 1 iniciado em 127.0.0.1:25001
-Roteador 1 encaminhando mensagem (Seq: 1) para o destino 5 via próximo salto 3
-Roteador 3 encaminhando mensagem (Seq: 1) para o destino 5 via próximo salto 5
-Roteador 5 recebeu mensagem (Seq: 1) de 1: "Olá roteador 5"
+# Terminal do Roteador 1
+Roteador 1 encaminhando mensagem (Seq: 1) para o destino 5 via proximo salto 3
 Roteador 1 recebeu ACK (Seq: 1) — mensagem entregue com sucesso
+
+# Terminal do Roteador 3 (intermediário)
+Roteador 3 encaminhando mensagem (Seq: 1) para o destino 5 via proximo salto 5
+Roteador 3 enviou ACK (Seq: 1) para 1 via proximo salto 1   ← ACK roteado de volta
+
+# Terminal do Roteador 5 (destino)
+Roteador 5 recebeu mensagem (Seq: 1) de 1: "Olá roteador 5"
+Roteador 5 enviou ACK (Seq: 1) para 1 via proximo salto 3
 ```
 
 Com descarte aleatório ativo, pode aparecer:
@@ -135,6 +149,26 @@ Categorias registradas:
 | `[ACK_RECEBIDO]` | ACK recebido pela origem |
 | `[REENVIO]` | Timeout disparou, pacote reenviado |
 
+Exemplo de log do roteador 1 após `send 5 Olá`:
+
+```
+2026-05-18 16:40:12 [ENVIADA]      Seq 1 destino 5 payload="Olá"
+2026-05-18 16:40:14 [ACK_RECEBIDO] Seq 1 de destino 5
+```
+
+Exemplo de log do roteador 3 (intermediário):
+
+```
+2026-05-18 16:40:13 [ENCAMINHADA]  Seq 1 origem 1 destino 5 proximo_salto 5
+```
+
+Exemplo de log do roteador 5 (destino):
+
+```
+2026-05-18 16:40:13 [RECEBIDA]     Seq 1 origem 1 payload="Olá"
+2026-05-18 16:40:13 [ACK_ENVIADO]  Seq 1 para origem 1
+```
+
 ---
 
 ## Como testar a confiabilidade
@@ -146,10 +180,10 @@ O descarte aleatório de 10% afeta pacotes DATA e ACK. Para observar o mecanismo
 3. Observe nos logs os eventos `[DESCARTE]` e `[REENVIO]`
 4. Confirme que a mensagem sempre chega ao destino final
 
-Para aumentar a probabilidade de descarte durante testes, edite temporariamente em `router.py`:
+Para aumentar a probabilidade de descarte durante testes, edite em `router.py`:
 
 ```python
-LOSS_PROBABILITY = 0.30  # 30% para facilitar visualização
+LOSS_PROBABILITY = 0.50  # 50% para facilitar visualização
 ```
 
 ---
@@ -161,10 +195,11 @@ Cada roteador conhece a topologia completa por meio dos arquivos de configuraç�
 A tabela de encaminhamento resultante mapeia cada destino ao **próximo salto** (não ao destino final diretamente):
 
 ```
-Destino 2 → próximo salto 3
-Destino 3 → próximo salto 3
-Destino 4 → próximo salto 3
-Destino 5 → próximo salto 3
+Roteador 1 — tabela de encaminhamento:
+  Destino 2 → próximo salto 3
+  Destino 3 → próximo salto 3
+  Destino 4 → próximo salto 3
+  Destino 5 → próximo salto 3
 ```
 
 O pacote viaja salto a salto, e cada roteador intermediário consulta sua própria tabela para decidir para onde enviar.
@@ -178,6 +213,6 @@ O sistema implementa **stop-and-wait** com **ACK fim-a-fim**:
 1. Origem envia DATA e aguarda ACK do destino final
 2. Se o ACK não chegar em **3 segundos**, reenvia o mesmo pacote
 3. O reenvio continua indefinidamente até o ACK chegar
-4. O destino detecta duplicatas pelo número de sequência e reenvio o ACK sem re-entregar a mensagem
+4. O destino detecta duplicatas pelo número de sequência e reenvia o ACK sem re-entregar a mensagem
 
-O número de sequência garante que retransmissões não causem entregas duplicadas ao usuário.
+O ACK é roteado de volta pelo mesmo mecanismo de encaminhamento hop-a-hop (cada roteador intermediário consulta sua forwarding table para encaminhar o ACK até a origem).
