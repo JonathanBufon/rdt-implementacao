@@ -4,7 +4,8 @@ PORTS   = 25001 25002 25003 25004 25005
 IMAGE   = rdt-p2p
 
 .PHONY: help start attach stop logs clean test status \
-        docker-build docker-run docker-test docker-clean
+        docker-build docker-run docker-test docker-clean \
+        compose-up compose-down compose-run compose-test
 
 # ─── Ajuda ────────────────────────────────────────────────────────────────────
 
@@ -24,6 +25,12 @@ help:
 	@echo "  make docker-run   — sobe 5 roteadores em tmux dentro do container"
 	@echo "  make docker-test  — teste automático dentro do container"
 	@echo "  make docker-clean — remove a imagem local"
+	@echo ""
+	@echo "── Docker Compose ─────────────────────────────────"
+	@echo "  make compose-up   — builda e sobe o container em background"
+	@echo "  make compose-down — derruba e remove o container"
+	@echo "  make compose-run  — abre sessão interativa (tmux)"
+	@echo "  make compose-test — teste automático via compose"
 	@echo ""
 
 # ─── Subir roteadores ─────────────────────────────────────────────────────────
@@ -153,3 +160,17 @@ docker-test:
 docker-clean:
 	docker rmi $(IMAGE) 2>/dev/null || true
 	@echo "Imagem $(IMAGE) removida."
+
+# ─── Docker Compose ───────────────────────────────────────────────────────────
+
+compose-up:
+	docker compose up --build -d
+
+compose-down:
+	docker compose down
+
+compose-run:
+	docker compose run --rm rdt
+
+compose-test:
+	docker compose run --rm --entrypoint make rdt test

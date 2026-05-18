@@ -1,0 +1,7 @@
+services:
+  rdt:
+    build: .
+    image: rdt-p2p
+    container_name: rdt-p2p
+    stdin_open: true
+    tty: true
