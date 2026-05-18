@@ -66,6 +66,12 @@ Para modificar a topologia, edite os dois arquivos e reinicie todos os roteadore
 
 ---
 
+## Testes
+
+Para um guia completo de testes manuais e automáticos (incluindo Docker e Windows), veja [HOW-TO-TEST.md](HOW-TO-TEST.md).
+
+---
+
 ## Como executar
 
 Abra um terminal por roteador e execute:
