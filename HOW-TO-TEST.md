@@ -44,9 +44,10 @@ make clean   # remove logs e __pycache__
 
 > Use esta seção se estiver no **Windows** ou preferir não instalar Python e tmux localmente.
 
-### Pré-requisito
+### Pré-requisitos
 
-Instale o [Docker Desktop](https://www.docker.com/products/docker-desktop/) e certifique-se de que ele está rodando.
+- Instale o [Docker Desktop](https://www.docker.com/products/docker-desktop/) e certifique-se de que ele está rodando.
+- Instale o **GNU Make** para poder usar os comandos `make ...` no PowerShell — veja o guia [WINDOWS-MAKE-SETUP.md](WINDOWS-MAKE-SETUP.md).
 
 ### Passo 1 — Construir a imagem
 
