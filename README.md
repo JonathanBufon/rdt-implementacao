@@ -2,6 +2,8 @@
 
 Trabalho acadêmico — Redes de Computadores, Unochapecó 2026/1.
 
+**Alunos:** Jonathan Bufon · Rafael Merisio Neto
+
 Simulação de uma rede de roteadores P2P usando apenas sockets UDP. Cada roteador executa Dijkstra para calcular rotas e encaminha mensagens salto a salto. A confiabilidade é garantida por stop-and-wait com ACK fim-a-fim e retransmissão por timeout (RDT 3.0).
 
 ---
