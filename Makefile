@@ -1,22 +1,29 @@
 SESSION = rdt
 LOG_DIR = logs
 PORTS   = 25001 25002 25003 25004 25005
+IMAGE   = rdt-p2p
 
-.PHONY: help start attach stop logs clean test status
+.PHONY: help start attach stop logs clean test status \
+        docker-build docker-run docker-test docker-clean
 
 # ─── Ajuda ────────────────────────────────────────────────────────────────────
 
 help:
 	@echo ""
-	@echo "Alvos disponíveis:"
+	@echo "── Local ──────────────────────────────────────────"
+	@echo "  make start        — sobe os 5 roteadores (tmux ou gnome-terminal)"
+	@echo "  make attach       — reconecta à sessão tmux existente"
+	@echo "  make stop         — mata todos os processos e libera as portas"
+	@echo "  make logs         — exibe todos os arquivos de log"
+	@echo "  make clean        — remove logs e __pycache__"
+	@echo "  make test         — teste automático R1→R5 (sem abrir terminais)"
+	@echo "  make status       — mostra quais roteadores estão ativos"
 	@echo ""
-	@echo "  make start   — sobe os 5 roteadores (tmux ou gnome-terminal)"
-	@echo "  make attach  — reconecta à sessão tmux existente"
-	@echo "  make stop    — mata todos os processos e libera as portas"
-	@echo "  make logs    — exibe todos os arquivos de log"
-	@echo "  make clean   — remove logs e __pycache__"
-	@echo "  make test    — teste automático R1→R5 (sem abrir terminais)"
-	@echo "  make status  — mostra quais roteadores estão ativos"
+	@echo "── Docker (Windows / sem dependências locais) ─────"
+	@echo "  make docker-build — constrói a imagem rdt-p2p"
+	@echo "  make docker-run   — sobe 5 roteadores em tmux dentro do container"
+	@echo "  make docker-test  — teste automático dentro do container"
+	@echo "  make docker-clean — remove a imagem local"
 	@echo ""
 
 # ─── Subir roteadores ─────────────────────────────────────────────────────────
@@ -131,3 +138,18 @@ test:
 	@echo ""
 	@echo "──── Logs de arquivo ────────────────────────────"
 	@$(MAKE) --no-print-directory logs
+
+# ─── Docker ───────────────────────────────────────────────────────────────────
+
+docker-build:
+	docker build -t $(IMAGE) .
+
+docker-run:
+	docker run -it --rm --name $(IMAGE) $(IMAGE)
+
+docker-test:
+	docker run --rm --entrypoint make $(IMAGE) test
+
+docker-clean:
+	docker rmi $(IMAGE) 2>/dev/null || true
+	@echo "Imagem $(IMAGE) removida."
