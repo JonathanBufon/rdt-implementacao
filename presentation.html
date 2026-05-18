@@ -1,0 +1,1220 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sistema de Mensageria P2P Confiável com UDP</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:       #080c14;
+  --card:     #0f1623;
+  --border:   #1e293b;
+  --accent:   #818cf8;
+  --accent2:  #34d399;
+  --warn:     #f59e0b;
+  --danger:   #f87171;
+  --text:     #e2e8f0;
+  --muted:    #64748b;
+  --code-bg:  #070b11;
+  --kw:       #c084fc;
+  --str:      #86efac;
+  --num:      #fdba74;
+  --fn:       #60a5fa;
+  --cm:       #4b5563;
+  --cls:      #f9a8d4;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  height: 100vh;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ── Layout ─────────────────────────────────────────────── */
+.deck { width: 100vw; height: 100vh; position: relative; }
+
+.slide {
+  position: absolute; inset: 0;
+  display: none;
+  flex-direction: column;
+  padding: 48px 72px 80px;
+  overflow: hidden;
+}
+.slide.active { display: flex; }
+
+/* ── Navigation ─────────────────────────────────────────── */
+.nav {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 20px;
+  background: rgba(15,22,35,.85); backdrop-filter: blur(8px);
+  border: 1px solid var(--border); border-radius: 40px;
+  padding: 10px 24px; z-index: 100;
+}
+.nav button {
+  background: none; border: none; color: var(--accent);
+  font-size: 1.4rem; cursor: pointer; line-height: 1;
+  transition: transform .15s;
+}
+.nav button:hover { transform: scale(1.3); }
+.counter { font-size: .85rem; color: var(--muted); min-width: 56px; text-align: center; }
+
+.progress {
+  position: fixed; top: 0; left: 0; height: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  transition: width .3s ease; z-index: 100;
+}
+
+/* ── Slide Typography ────────────────────────────────────── */
+.slide-title {
+  font-size: 1.9rem; font-weight: 700;
+  color: var(--accent); margin-bottom: 32px;
+  border-bottom: 1px solid var(--border); padding-bottom: 16px;
+}
+.slide-subtitle {
+  font-size: 1rem; color: var(--muted); margin-top: 6px;
+  font-weight: 400;
+}
+
+h3 { font-size: 1rem; color: var(--accent2); margin-bottom: 10px; font-weight: 600; }
+
+p { line-height: 1.7; color: #cbd5e1; }
+
+ul { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+ul li::before { content: "▸ "; color: var(--accent); }
+ul li { line-height: 1.6; }
+
+.cols { display: grid; gap: 28px; flex: 1; }
+.cols-2 { grid-template-columns: 1fr 1fr; }
+.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+
+/* ── Cards ───────────────────────────────────────────────── */
+.card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 20px 24px;
+}
+.card h3 { margin-bottom: 10px; }
+
+/* ── Code ────────────────────────────────────────────────── */
+pre {
+  background: var(--code-bg); border: 1px solid var(--border);
+  border-radius: 10px; padding: 18px 22px;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: .82rem; line-height: 1.65; overflow-x: auto;
+  flex-shrink: 0;
+}
+.kw  { color: var(--kw); }
+.str { color: var(--str); }
+.num { color: var(--num); }
+.fn  { color: var(--fn); }
+.cm  { color: var(--cm); font-style: italic; }
+.cls { color: var(--cls); }
+.acc { color: var(--accent); }
+.acc2{ color: var(--accent2); }
+.wn  { color: var(--warn); }
+
+/* ── Badges ──────────────────────────────────────────────── */
+.badge {
+  display: inline-block; font-size: .75rem; font-weight: 600;
+  padding: 3px 10px; border-radius: 20px; font-family: monospace;
+}
+.b-blue   { background:#1e3a5f; color:#60a5fa; }
+.b-green  { background:#064e3b; color:#34d399; }
+.b-purple { background:#3b0764; color:#c084fc; }
+.b-yellow { background:#451a03; color:#fdba74; }
+.b-red    { background:#450a0a; color:#f87171; }
+
+/* ── Tables ──────────────────────────────────────────────── */
+table { border-collapse: collapse; width: 100%; font-size: .85rem; }
+th { background: #0d1627; color: var(--accent); padding: 10px 14px;
+     text-align: left; border-bottom: 2px solid var(--border); }
+td { padding: 9px 14px; border-bottom: 1px solid var(--border); color: #cbd5e1; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(129,140,248,.05); }
+
+/* ── Title Slide ─────────────────────────────────────────── */
+.title-slide {
+  justify-content: center; align-items: center; text-align: center; gap: 20px;
+}
+.title-slide .big-title {
+  font-size: 2.6rem; font-weight: 800;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  line-height: 1.2;
+}
+.title-slide .subtitle { font-size: 1.1rem; color: var(--muted); }
+.tag-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 8px; }
+
+/* ── SVG Topology ────────────────────────────────────────── */
+.topo-svg { flex: 1; display: flex; justify-content: center; align-items: center; }
+.topo-svg svg { max-height: 340px; }
+.node circle { stroke-width: 2.5; }
+.node text { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 14px; }
+.edge { stroke-width: 2; }
+.edge-label { font-size: 11px; font-family: monospace; }
+
+/* ── Module diagram ──────────────────────────────────────── */
+.mod-grid {
+  display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; flex: 1; align-content: center;
+}
+.mod-box {
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px 16px; text-align: center;
+}
+.mod-box .fname { font-family: monospace; font-size: .9rem; color: var(--accent2); font-weight: 600; }
+.mod-box .fdesc { font-size: .75rem; color: var(--muted); margin-top: 6px; line-height: 1.4; }
+.mod-box.main-mod { border-color: var(--accent); }
+.mod-box.core-mod { border-color: #334155; }
+
+/* ── Sequence diagram ────────────────────────────────────── */
+.seq { display: flex; gap: 0; flex: 1; overflow: hidden; }
+.seq-actor {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+}
+.seq-actor .actor-label {
+  background: var(--card); border: 1.5px solid var(--accent);
+  border-radius: 8px; padding: 8px 16px;
+  font-family: monospace; font-weight: 700; font-size: .9rem;
+  color: var(--accent); white-space: nowrap;
+}
+.seq-actor .lifeline {
+  width: 2px; background: var(--border); flex: 1; margin-top: 6px;
+}
+.seq-messages { position: absolute; top: 130px; left: 72px; right: 72px; }
+.seq-msg {
+  position: absolute; display: flex; align-items: center; gap: 8px;
+  font-size: .78rem;
+}
+.seq-arrow { flex: 1; height: 2px; position: relative; }
+.seq-arrow::after {
+  content: ''; position: absolute; right: 0; top: -4px;
+  border: 5px solid transparent;
+}
+.arrow-right .seq-arrow { background: var(--accent2); }
+.arrow-right .seq-arrow::after { border-left-color: var(--accent2); }
+.arrow-left .seq-arrow { background: var(--warn); }
+.arrow-left .seq-arrow::after { border-right-color: var(--warn); left: 0; right: auto; }
+.arrow-lost .seq-arrow { background: var(--danger); opacity: .7; }
+.seq-label {
+  position: absolute; top: -18px; font-size: .72rem;
+  white-space: nowrap; left: 50%; transform: translateX(-50%);
+}
+
+/* ── Log categories ──────────────────────────────────────── */
+.log-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; flex: 1; }
+.log-item {
+  background: var(--code-bg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 12px 16px; display: flex; flex-direction: column; gap: 4px;
+}
+.log-tag { font-family: monospace; font-size: .82rem; font-weight: 700; }
+.log-desc { font-size: .78rem; color: var(--muted); line-height: 1.4; }
+
+/* ── Checklist ───────────────────────────────────────────── */
+.check-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; flex: 1; align-content: start; }
+.check-item {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--card); border: 1px solid #1a2740;
+  border-radius: 8px; padding: 10px 14px; font-size: .82rem;
+}
+.check-item::before { content: "✓"; color: var(--accent2); font-weight: 700; font-size: 1rem; }
+
+/* ── Thread diagram ──────────────────────────────────────── */
+.thread-box {
+  border-radius: 10px; padding: 18px; flex: 1;
+}
+.t-main { background: rgba(129,140,248,.08); border: 1.5px solid var(--accent); }
+.t-listener { background: rgba(52,211,153,.08); border: 1.5px solid var(--accent2); }
+.thread-title { font-size: .95rem; font-weight: 700; margin-bottom: 12px; }
+
+/* ── Flow steps ──────────────────────────────────────────── */
+.flow-steps { display: flex; flex-direction: column; gap: 10px; flex: 1; }
+.step {
+  display: flex; align-items: flex-start; gap: 16px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 18px;
+}
+.step-num {
+  background: var(--accent); color: white; border-radius: 50%;
+  width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+  font-size: .8rem; font-weight: 700; flex-shrink: 0;
+}
+.step-content { flex: 1; }
+.step-content strong { font-size: .88rem; color: var(--text); }
+.step-content p { font-size: .78rem; color: var(--muted); margin-top: 3px; }
+
+/* ── Slide-in animation ──────────────────────────────────── */
+@keyframes fadeIn { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:none; } }
+.slide.active > * { animation: fadeIn .35s ease forwards; }
+</style>
+</head>
+<body>
+
+<div class="deck" id="deck">
+
+<!-- ═══════════════════════════════════════════════════════ SLIDE 1 -->
+<div class="slide title-slide active" id="s1">
+  <div class="big-title">Sistema de Mensageria P2P<br>Confiável com UDP</div>
+  <div class="subtitle">Redes de Computadores — Unochapecó 2026/1</div>
+  <div class="tag-row">
+    <span class="badge b-blue">Python 3</span>
+    <span class="badge b-green">Socket UDP</span>
+    <span class="badge b-purple">Dijkstra</span>
+    <span class="badge b-yellow">RDT 3.0</span>
+    <span class="badge b-red">Stop-and-Wait</span>
+  </div>
+  <p style="color:var(--muted);font-size:.9rem;margin-top:24px;">
+    ← → para navegar &nbsp;·&nbsp; Espaço para avançar
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ SLIDE 2 -->
+<div class="slide" id="s2">
+  <div class="slide-title">Arquitetura do Projeto
+    <div class="slide-subtitle">7 módulos Python, sem dependências externas</div>
+  </div>
+  <div class="mod-grid">
+    <div class="mod-box main-mod" style="grid-column:1/3">
+      <div class="fname">main.py</div>
+      <div class="fdesc">Ponto de entrada — lê ID via argv, inicializa Router, inicia threads</div>
+    </div>
+    <div class="mod-box main-mod" style="grid-column:3/5">
+      <div class="fname">router.py</div>
+      <div class="fdesc">Núcleo — socket UDP, encaminhamento, descarte, ACK, stop-and-wait</div>
+    </div>
+    <div class="mod-box core-mod">
+      <div class="fname">config_loader.py</div>
+      <div class="fdesc">Lê roteador.config e enlaces.config</div>
+    </div>
+    <div class="mod-box core-mod">
+      <div class="fname">graph.py</div>
+      <div class="fdesc">Constrói grafo, executa Dijkstra, gera forwarding table</div>
+    </div>
+    <div class="mod-box core-mod">
+      <div class="fname">packet.py</div>
+      <div class="fdesc">Serializa e desserializa pacotes DATA e ACK em JSON</div>
+    </div>
+    <div class="mod-box core-mod">
+      <div class="fname">reliability.py</div>
+      <div class="fdesc">StopAndWait com threading.Event para timeout eficiente</div>
+    </div>
+    <div class="mod-box core-mod" style="grid-column:1/3">
+      <div class="fname">roteador.config</div>
+      <div class="fdesc">Mapeia ID → IP:porta de cada roteador</div>
+    </div>
+    <div class="mod-box core-mod" style="grid-column:3/5">
+      <div class="fname">logger.py &nbsp;+&nbsp; enlaces.config</div>
+      <div class="fdesc">Log local por roteador &nbsp;·&nbsp; Topologia e custos dos enlaces</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ SLIDE 3 -->
+<div class="slide" id="s3">
+  <div class="slide-title">Topologia da Rede
+    <div class="slide-subtitle">5 nós, 7 enlaces bidirecionais — definidos em enlaces.config</div>
+  </div>
+  <div class="cols cols-2" style="flex:1;align-items:center;">
+    <div class="topo-svg">
+      <svg viewBox="0 0 380 340" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Edges normal -->
+        <line x1="190" y1="55" x2="70" y2="160" stroke="#1e3a5f" stroke-width="2.5"/>
+        <line x1="70" y1="160" x2="310" y2="160" stroke="#1e3a5f" stroke-width="2.5"/>
+        <line x1="70" y1="160" x2="70" y2="280" stroke="#1e3a5f" stroke-width="2.5"/>
+        <line x1="310" y1="160" x2="70" y2="280" stroke="#1e3a5f" stroke-width="2.5"/>
+        <line x1="70" y1="280" x2="310" y2="280" stroke="#1e3a5f" stroke-width="2.5"/>
+        <!-- Highlighted path 1→3→5 -->
+        <line x1="190" y1="55" x2="310" y2="160" stroke="#818cf8" stroke-width="3" stroke-dasharray="6,3"/>
+        <line x1="310" y1="160" x2="310" y2="280" stroke="#818cf8" stroke-width="3" stroke-dasharray="6,3"/>
+        <!-- Edge labels -->
+        <text x="118" y="100" fill="#4b5563" font-size="12" font-family="monospace" text-anchor="middle">10</text>
+        <text x="262" y="100" fill="#fdba74" font-size="12" font-family="monospace" text-anchor="middle">5</text>
+        <text x="190" y="150" fill="#4b5563" font-size="12" font-family="monospace" text-anchor="middle">2</text>
+        <text x="55" y="225" fill="#4b5563" font-size="12" font-family="monospace" text-anchor="middle">1</text>
+        <text x="185" y="240" fill="#4b5563" font-size="12" font-family="monospace" text-anchor="middle">9</text>
+        <text x="325" y="225" fill="#fdba74" font-size="12" font-family="monospace" text-anchor="middle">2</text>
+        <text x="190" y="298" fill="#4b5563" font-size="12" font-family="monospace" text-anchor="middle">4</text>
+        <!-- Nodes -->
+        <circle cx="190" cy="55" r="26" fill="#0f1623" stroke="#818cf8" stroke-width="2.5"/>
+        <text x="190" y="60" fill="#818cf8" font-size="14" font-family="monospace" font-weight="bold" text-anchor="middle">R1</text>
+        <circle cx="70" cy="160" r="26" fill="#0f1623" stroke="#334155" stroke-width="2"/>
+        <text x="70" y="165" fill="#94a3b8" font-size="14" font-family="monospace" font-weight="bold" text-anchor="middle">R2</text>
+        <circle cx="310" cy="160" r="26" fill="#0f1623" stroke="#818cf8" stroke-width="2.5"/>
+        <text x="310" y="165" fill="#818cf8" font-size="14" font-family="monospace" font-weight="bold" text-anchor="middle">R3</text>
+        <circle cx="70" cy="280" r="26" fill="#0f1623" stroke="#334155" stroke-width="2"/>
+        <text x="70" y="285" fill="#94a3b8" font-size="14" font-family="monospace" font-weight="bold" text-anchor="middle">R4</text>
+        <circle cx="310" cy="280" r="26" fill="#0f1623" stroke="#818cf8" stroke-width="2.5"/>
+        <text x="310" y="285" fill="#818cf8" font-size="14" font-family="monospace" font-weight="bold" text-anchor="middle">R5</text>
+      </svg>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:16px;">
+      <div class="card">
+        <h3>Caminho mais curto: R1 → R5</h3>
+        <p style="font-family:monospace;font-size:1rem;color:var(--accent);margin:8px 0;">
+          1 → 3 → 5 &nbsp; (custo 7)
+        </p>
+        <p style="font-size:.82rem;color:var(--muted);">Via R3: 5 + 2 = 7 &nbsp;·&nbsp; Via R2: 10 + 2 + 1 + 4 = 17</p>
+      </div>
+      <div class="card">
+        <h3>roteador.config</h3>
+        <pre style="font-size:.78rem;padding:12px;">1 25001 127.0.0.1
+2 25002 127.0.0.1
+3 25003 127.0.0.1
+4 25004 127.0.0.1
+5 25005 127.0.0.1</pre>
+      </div>
+      <div class="card">
+        <h3>enlaces.config</h3>
+        <pre style="font-size:.78rem;padding:12px;"><span style="color:var(--muted)"># origem destino custo</span>
+1 2 10 &nbsp; 1 3 5
+2 3 2  &nbsp; 2 4 1
+3 4 9  &nbsp; 3 5 2
+4 5 4</pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ SLIDE 4 -->
+<div class="slide" id="s4">
+  <div class="slide-title">config_loader.py
+    <div class="slide-subtitle">Leitura dos arquivos de configuração em memória</div>
+  </div>
+  <div class="cols cols-2" style="flex:1;">
+    <div style="display:flex;flex-direction:column;gap:16px;">
+      <pre><span class="kw">def</span> <span class="fn">load_routers_config</span>(path=<span class="str">"roteador.config"</span>):
+    routers = {}
+    <span class="kw">with</span> <span class="fn">open</span>(path) <span class="kw">as</span> f:
+        <span class="kw">for</span> line <span class="kw">in</span> f:
+            parts = line.strip().split()
+            router_id = <span class="fn">int</span>(parts[<span class="num">0</span>])
+            routers[router_id] = {
+                <span class="str">"ip"</span>:   parts[<span class="num">2</span>],
+                <span class="str">"port"</span>: <span class="fn">int</span>(parts[<span class="num">1</span>])
+            }
+    <span class="kw">return</span> routers
+
+<span class="kw">def</span> <span class="fn">load_links_config</span>(path=<span class="str">"enlaces.config"</span>):
+    links = []
+    <span class="kw">with</span> <span class="fn">open</span>(path) <span class="kw">as</span> f:
+        <span class="kw">for</span> line <span class="kw">in</span> f:
+            a, b, cost = [<span class="fn">int</span>(x) <span class="kw">for</span> x <span class="kw">in</span> line.split()]
+            links.append((a, b, cost))
+    <span class="kw">return</span> links</pre>
+      <div class="card">
+        <h3>Estruturas retornadas</h3>
+        <pre style="font-size:.78rem;padding:12px;"><span class="cm"># load_routers_config()</span>
+{<span class="num">1</span>: {<span class="str">'ip'</span>:<span class="str">'127.0.0.1'</span>, <span class="str">'port'</span>:<span class="num">25001</span>}, ...}
+
+<span class="cm"># load_links_config()</span>
+[(<span class="num">1</span>,<span class="num">2</span>,<span class="num">10</span>), (<span class="num">1</span>,<span class="num">3</span>,<span class="num">5</span>), (<span class="num">2</span>,<span class="num">3</span>,<span class="num">2</span>), ...]</pre>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div class="card">
+        <h3>O que faz</h3>
+        <ul>
+          <li>Lê linha a linha com <code style="color:var(--fn)">split()</code> para separar campos</li>
+          <li>Converte tipos: ID e porta para <code style="color:var(--fn)">int</code>, IP permanece <code style="color:var(--str)">str</code></li>
+          <li>Retorna dicionário indexado pelo ID do roteador</li>
+          <li>Links são bidirecionais — o grafo trata a simetria</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Onde é chamado</h3>
+        <p style="font-size:.85rem;color:var(--muted);">Em <code style="color:var(--acc2)">Router.__init__</code> — executado uma única vez na inicialização. Todos os roteadores leem os mesmos arquivos e conhecem a topologia completa desde o início.</p>
+      </div>
+      <div class="card">
+        <h3>Filosofia de projeto</h3>
+        <p style="font-size:.85rem;color:var(--muted);">Separar leitura de configuração da lógica principal facilita trocar a topologia editando apenas os arquivos .config, sem alterar nenhum código Python.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ SLIDE 5 -->
+<div class="slide" id="s5">
+  <div class="slide-title">graph.py — Dijkstra
+    <div class="slide-subtitle">Caminho de menor custo e tabela de encaminhamento</div>
+  </div>
+  <div class="cols cols-2" style="flex:1;">
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <pre><span class="kw">import</span> heapq
+
+<span class="kw">def</span> <span class="fn">_dijkstra</span>(graph, source):
+    dist = {source: <span class="num">0</span>}
+    prev = {}
+    heap = [(<span class="num">0</span>, source)]
+    <span class="kw">while</span> heap:
+        d, u = heapq.<span class="fn">heappop</span>(heap)
+        <span class="kw">if</span> d > dist.<span class="fn">get</span>(u, <span class="fn">float</span>(<span class="str">"inf"</span>)):
+            <span class="kw">continue</span>          <span class="cm"># nó obsoleto</span>
+        <span class="kw">for</span> v, w <span class="kw">in</span> graph.<span class="fn">get</span>(u, []):
+            nd = d + w
+            <span class="kw">if</span> nd < dist.<span class="fn">get</span>(v, <span class="fn">float</span>(<span class="str">"inf"</span>)):
+                dist[v] = nd
+                prev[v] = u        <span class="cm"># rastreia predecessor</span>
+                heapq.<span class="fn">heappush</span>(heap, (nd, v))
+    <span class="kw">return</span> dist, prev
+
+<span class="kw">def</span> <span class="fn">build_forwarding_table</span>(graph, source):
+    _, prev = <span class="fn">_dijkstra</span>(graph, source)
+    table = {}
+    <span class="kw">for</span> dest <span class="kw">in</span> graph:
+        <span class="kw">if</span> dest == source: <span class="kw">continue</span>
+        node = dest
+        <span class="kw">while</span> prev.<span class="fn">get</span>(node) != source:
+            node = prev[node]   <span class="cm"># anda para trás até source</span>
+        table[dest] = node      <span class="cm"># primeiro salto após source</span>
+    <span class="kw">return</span> table</pre>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div class="card">
+        <h3>Como funciona o Dijkstra</h3>
+        <ul style="font-size:.82rem;">
+          <li><strong>heap min-priority</strong> garante processar sempre o nó de menor custo acumulado</li>
+          <li><strong>prev[]</strong> armazena o predecessor de cada nó no caminho ótimo</li>
+          <li>Nós obsoletos no heap são descartados pela verificação <code style="color:var(--kw)">d > dist[u]</code></li>
+          <li>Complexidade: O((V + E) log V)</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Como build_forwarding_table funciona</h3>
+        <p style="font-size:.82rem;color:var(--muted);">Para cada destino, caminha de volta pelo <code style="color:var(--acc)">prev[]</code> até encontrar o nó cujo predecessor é a própria origem. Esse nó é o <strong style="color:var(--acc2)">próximo salto</strong>.</p>
+        <pre style="font-size:.76rem;margin-top:10px;padding:10px;"><span class="cm"># Resultado para R1</span>
+{<span class="num">2</span>: <span class="num">3</span>, <span class="num">3</span>: <span class="num">3</span>, <span class="num">4</span>: <span class="num">3</span>, <span class="num">5</span>: <span class="num">3</span>}
+<span class="cm"># → todos passam por R3 primeiro</span></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ SLIDE 6 -->
+<div class="slide" id="s6">
+  <div class="slide-title">Tabela de Encaminhamento
+    <div class="slide-subtitle">Resultado do Dijkstra — calculado uma vez na inicialização de cada roteador</div>
+  </div>
+  <div class="cols cols-2" style="flex:1;align-items:start;gap:24px;">
+    <div style="display:flex;flex-direction:column;gap:16px;">
+      <table>
+        <tr><th colspan="5">Próximo salto (next_hop) por origem e destino</th></tr>
+        <tr><th>Origem ↓ &nbsp; Destino →</th><th>R1</th><th>R2</th><th>R3</th><th>R4</th><th>R5</th></tr>
+        <tr><td><strong>R1</strong></td><td style="color:var(--muted)">—</td><td>R3</td><td>R3</td><td>R3</td><td>R3</td></tr>
+        <tr><td><strong>R2</strong></td><td>R3</td><td style="color:var(--muted)">—</td><td>R3</td><td>R4</td><td>R3</td></tr>
+        <tr><td><strong>R3</strong></td><td>R1</td><td>R2</td><td style="color:var(--muted)">—</td><td>R2</td><td>R5</td></tr>
+        <tr><td><strong>R4</strong></td><td>R2</td><td>R2</td><td>R2</td><td style="color:var(--muted)">—</td><td>R5</td></tr>
+        <tr><td><strong>R5</strong></td><td>R3</td><td>R3</td><td>R3</td><td>R4</td><td style="color:var(--muted)">—</td></tr>
+      </table>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div class="card">
+        <h3>Propriedade chave</h3>
+        <p style="font-size:.85rem;color:var(--muted);">Cada roteador <strong style="color:var(--text)">só conhece o próximo salto</strong>, não o caminho completo. O pacote avança hop-a-hop, e cada nó consulta sua própria tabela para decidir para onde enviar.</p>
+      </div>
+      <div class="card">
+        <h3>Exemplo: R1 → R4 (custo 8)</h3>
+        <p style="font-family:monospace;font-size:.9rem;color:var(--acc);margin:8px 0;">
+          1 →<span style="color:var(--acc2)"> 3 </span>→<span style="color:var(--acc2)"> 2 </span>→ 4
+        </p>
+        <ul style="font-size:.8rem;">
+          <li>R1 consulta: destino 4 → próximo salto <strong>R3</strong></li>
+          <li>R3 consulta: destino 4 → próximo salto <strong>R2</strong></li>
+          <li>R2 consulta: destino 4 → próximo salto <strong>R4</strong></li>
+          <li>R4 entrega a mensagem</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ SLIDE 7 -->
+<div class="slide" id="s7">
+  <div class="slide-title">packet.py — Formato dos Pacotes
+    <div class="slide-subtitle">Serialização JSON sobre UDP</div>
+  </div>
+  <div class="cols cols-2" style="flex:1;">
+    <div style="display:flex;flex-direction:column;gap:16px;">
+      <div class="card">
+        <h3>Pacote DATA</h3>
+        <pre style="font-size:.8rem;padding:14px;">{
+  <span class="str">"type"</span>:        <span class="str">"DATA"</span>,
+  <span class="str">"seq"</span>:         <span class="num">1</span>,       <span class="cm">← número de sequência</span>
+  <span class="str">"origin"</span>:      <span class="num">1</span>,       <span class="cm">← quem originou</span>
+  <span class="str">"destination"</span>: <span class="num">5</span>,       <span class="cm">← destino final</span>
+  <span class="str">"payload"</span>:     <span class="str">"Olá"</span>,   <span class="cm">← até 100 chars</span>
+  <span class="str">"path"</span>:        [<span class="num">1</span>,<span class="num">3</span>,<span class="num">5</span>]  <span class="cm">← informacional</span>
+}</pre>
+      </div>
+      <div class="card">
+        <h3>Pacote ACK</h3>
+        <pre style="font-size:.8rem;padding:14px;">{
+  <span class="str">"type"</span>:        <span class="str">"ACK"</span>,
+  <span class="str">"seq"</span>:         <span class="num">1</span>,  <span class="cm">← mesmo seq do DATA</span>
+  <span class="str">"origin"</span>:      <span class="num">5</span>,  <span class="cm">← quem envia o ACK</span>
+  <span class="str">"destination"</span>: <span class="num">1</span>   <span class="cm">← quem deve receber</span>
+}</pre>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:16px;">
+      <pre><span class="kw">def</span> <span class="fn">serialize</span>(packet):
+    <span class="kw">return</span> json.<span class="fn">dumps</span>(packet).<span class="fn">encode</span>()
+
+<span class="kw">def</span> <span class="fn">deserialize</span>(data):
+    <span class="kw">return</span> json.<span class="fn">loads</span>(data.<span class="fn">decode</span>())</pre>
+      <div class="card">
+        <h3>Decisões de design</h3>
+        <ul style="font-size:.83rem;">
+          <li><strong>JSON</strong> — legível, fácil de inspecionar nos logs, sem dependências</li>
+          <li><strong>Campo <code style="color:var(--str)">path</code></strong> é apenas informacional — o roteamento usa a forwarding table local, nunca o path do pacote</li>
+          <li><strong>ACK fim-a-fim</strong> — o ACK viaja do destino final de volta à origem, hop-a-hop, pelo mesmo mecanismo de encaminhamento</li>
+          <li><strong><code style="color:var(--str)">seq</code> no ACK</strong> deve corresponder ao seq do DATA (RDT 2.2 — sem NAK)</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ SLIDE 8 -->
+<div class="slide" id="s8">
+  <div class="slide-title">router.py — Inicialização
+    <div class="slide-subtitle">Tudo que o Router carrega ao ser instanciado</div>
+  </div>
+  <div class="cols cols-2" style="flex:1;">
+    <pre><span class="kw">class</span> <span class="cls">Router</span>:
+  <span class="kw">def</span> <span class="fn">__init__</span>(<span class="acc">self</span>, router_id):
+    <span class="acc">self</span>.id = router_id
+
+    <span class="cm"># 1. Configuração</span>
+    <span class="acc">self</span>.routers = <span class="fn">load_routers_config</span>()
+    <span class="acc">self</span>.links   = <span class="fn">load_links_config</span>()
+
+    <span class="cm"># 2. Grafo e roteamento</span>
+    <span class="acc">self</span>.graph   = <span class="fn">build_graph</span>(<span class="acc">self</span>.links)
+    <span class="acc">self</span>.forwarding_table = \
+        <span class="fn">build_forwarding_table</span>(<span class="acc">self</span>.graph, router_id)
+
+    <span class="cm"># 3. Log, confiabilidade, sequência</span>
+    <span class="acc">self</span>.logger = <span class="fn">get_logger</span>(router_id)
+    <span class="acc">self</span>.saw    = <span class="cls">StopAndWait</span>()
+    <span class="acc">self</span>.seq    = <span class="num">0</span>
+    <span class="acc">self</span>.last_received_seq = {}  <span class="cm"># deduplicação</span>
+
+    <span class="cm"># 4. Socket UDP</span>
+    info = <span class="acc">self</span>.routers[router_id]
+    <span class="acc">self</span>.ip, <span class="acc">self</span>.port = info[<span class="str">"ip"</span>], info[<span class="str">"port"</span>]
+    <span class="acc">self</span>.sock = socket.<span class="cls">socket</span>(
+        socket.AF_INET, socket.SOCK_DGRAM)
+    <span class="acc">self</span>.sock.<span class="fn">bind</span>((<span class="acc">self</span>.ip, <span class="acc">self</span>.port))</pre>
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div class="card">
+        <h3>Atributos críticos</h3>
+        <table style="font-size:.8rem;">
+          <tr><td><code style="color:var(--acc2)">forwarding_table</code></td><td>dict dest→next_hop, calculado por Dijkstra</td></tr>
+          <tr><td><code style="color:var(--acc2)">saw</code></td><td>StopAndWait — controla pending_seq e ACK event</td></tr>
+          <tr><td><code style="color:var(--acc2)">seq</code></td><td>Contador monotônico de mensagens enviadas</td></tr>
+          <tr><td><code style="color:var(--acc2)">last_received_seq</code></td><td>Rastreia último seq entregue por origem (deduplicação)</td></tr>
+          <tr><td><code style="color:var(--acc2)">sock</code></td><td>UDP socket vinculado a ip:porta</td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <h3>Por que <code>SOCK_DGRAM</code>?</h3>
+        <p style="font-size:.83rem;color:var(--muted);">UDP (<code style="color:var(--fn)">SOCK_DGRAM</code>) não tem conexão, não garante entrega nem ordem. Toda a confiabilidade é implementada manualmente pelo projeto — é esse o objetivo do trabalho.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ SLIDE 9 -->
+<div class="slide" id="s9">
+  <div class="slide-title">router.py — Arquitetura de Threads
+    <div class="slide-subtitle">Thread principal (comandos) + Thread listener (escuta UDP)</div>
+  </div>
+  <div class="cols cols-2" style="flex:1;gap:20px;">
+    <div class="thread-box t-main" style="display:flex;flex-direction:column;gap:12px;">
+      <div class="thread-title" style="color:var(--accent);">Thread Principal — command_loop()</div>
+      <pre style="font-size:.78rem;"><span class="kw">def</span> <span class="fn">command_loop</span>(<span class="acc">self</span>):
+  <span class="kw">while</span> <span class="acc">self</span>.running:
+    <span class="kw">try</span>:
+      cmd = <span class="fn">input</span>()    <span class="cm"># bloqueia aqui</span>
+    <span class="kw">except</span> EOFError:
+      <span class="kw">break</span>           <span class="cm"># stdin fechado</span>
+    <span class="acc">self</span>.<span class="fn">handle_command</span>(cmd)
+    <span class="cm"># send_message() também bloqueia aqui</span>
+    <span class="cm"># enquanto aguarda ACK (stop-and-wait)</span></pre>
+      <ul style="font-size:.8rem;">
+        <li>Lê o comando <code style="color:var(--fn)">send &lt;dest&gt; &lt;msg&gt;</code></li>
+        <li>Bloqueia em <code style="color:var(--fn)">saw.wait_for_ack()</code> durante envio</li>
+        <li>EOFError → para de aceitar comandos mas mantém o roteador vivo</li>
+      </ul>
+    </div>
+    <div class="thread-box t-listener" style="display:flex;flex-direction:column;gap:12px;">
+      <div class="thread-title" style="color:var(--accent2);">Thread Listener — listen() — daemon</div>
+      <pre style="font-size:.78rem;"><span class="kw">def</span> <span class="fn">start</span>(<span class="acc">self</span>):
+  <span class="acc">self</span>.running = <span class="kw">True</span>
+  t = threading.<span class="cls">Thread</span>(
+    target=<span class="acc">self</span>.listen, daemon=<span class="kw">True</span>)
+  t.<span class="fn">start</span>()
+
+<span class="kw">def</span> <span class="fn">listen</span>(<span class="acc">self</span>):
+  <span class="kw">while</span> <span class="acc">self</span>.running:
+    data, _ = <span class="acc">self</span>.sock.<span class="fn">recvfrom</span>(<span class="num">4096</span>)
+    pkt = <span class="fn">deserialize</span>(data)
+    <span class="acc">self</span>.<span class="fn">handle_packet</span>(pkt)</pre>
+      <ul style="font-size:.8rem;">
+        <li><strong>daemon=True</strong> → morre junto com a thread principal</li>
+        <li>Processa DATA (encaminhar ou entregar) e ACK (encaminhar ou sinalizar)</li>
+        <li>Quando recebe ACK correto, chama <code style="color:var(--acc2)">saw.on_ack()</code> que desbloqueia a thread principal</li>
+      </ul>
+    </div>
+  </div>
+  <div class="card" style="margin-top:14px;padding:14px 18px;">
+    <p style="font-size:.83rem;color:var(--muted);">
+      <strong style="color:var(--text);">Thread safety:</strong> A única variável compartilhada entre as duas threads é o objeto <code style="color:var(--acc2)">StopAndWait</code>, que usa <code style="color:var(--fn)">threading.Lock</code> + <code style="color:var(--fn)">threading.Event</code> para sincronização sem race condition.
+    </p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ SLIDE 10 -->
+<div class="slide" id="s10">
+  <div class="slide-title">router.py — send_message
+    <div class="slide-subtitle">Loop de stop-and-wait com timeout e retransmissão</div>
+  </div>
+  <div class="cols cols-2" style="flex:1;">
+    <pre style="font-size:.77rem;"><span class="kw">def</span> <span class="fn">send_message</span>(<span class="acc">self</span>, destination, payload):
+  path = <span class="fn">shortest_path</span>(..., destination)
+  next_hop = <span class="acc">self</span>.forwarding_table[destination]
+
+  <span class="acc">self</span>.seq += <span class="num">1</span>
+  seq = <span class="acc">self</span>.seq
+  packet = <span class="fn">make_data</span>(seq, <span class="acc">self</span>.id,
+                       destination, payload, path)
+
+  <span class="acc">self</span>.saw.<span class="fn">set_pending</span>(seq)  <span class="cm"># arma o timer</span>
+  attempt = <span class="num">0</span>
+
+  <span class="kw">while</span> <span class="kw">True</span>:          <span class="cm"># reenvio indefinido</span>
+    attempt += <span class="num">1</span>
+    <span class="kw">if</span> attempt == <span class="num">1</span>:
+      <span class="acc">self</span>.logger.<span class="fn">info</span>(<span class="str">"[ENVIADA] ..."</span>)
+    <span class="kw">else</span>:
+      <span class="acc">self</span>.logger.<span class="fn">info</span>(<span class="str">"[REENVIO] ..."</span>)
+
+    <span class="acc">self</span>.<span class="fn">send_packet</span>(next_hop, packet)
+
+    <span class="kw">if</span> <span class="acc">self</span>.saw.<span class="fn">wait_for_ack</span>(timeout=<span class="num">3</span>):
+      <span class="acc">self</span>.logger.<span class="fn">info</span>(<span class="str">"[ACK_RECEBIDO] ..."</span>)
+      <span class="kw">break</span>           <span class="cm"># sucesso</span>
+    <span class="cm"># timeout → próxima iteração reenvia</span></pre>
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div class="card">
+        <h3>Por que <code>Event.wait(timeout=3)</code> e não <code>sleep(3)</code>?</h3>
+        <p style="font-size:.83rem;color:var(--muted);">Com <code style="color:var(--fn)">Event.wait</code>, o ACK desbloqueia o método <strong style="color:var(--text)">imediatamente</strong> ao chegar — sem esperar os 3 segundos. Com <code style="color:var(--fn)">sleep</code>, a origem esperaria sempre 3s, mesmo quando o ACK chegou em 50ms.</p>
+      </div>
+      <div class="card">
+        <h3>Estados possíveis após wait_for_ack</h3>
+        <ul style="font-size:.83rem;">
+          <li><strong style="color:var(--acc2)">True</strong> — ACK correto chegou → sai do loop</li>
+          <li><strong style="color:var(--danger)">False</strong> — timeout de 3s → loga [REENVIO], reenvia o mesmo pacote com o mesmo seq</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Escopo do stop-and-wait</h3>
+        <p style="font-size:.83rem;color:var(--muted);">Um único <code style="color:var(--acc2)">pending_seq</code> por roteador. O roteador <strong style="color:var(--text)">não aceita novo comando</strong> enquanto aguarda ACK da mensagem atual — command_loop está bloqueado em send_message.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ SLIDE 11 -->
+<div class="slide" id="s11">
+  <div class="slide-title">router.py — Descarte Aleatório
+    <div class="slide-subtitle">10% de perda simulada — aplicado a DATA e ACK antes de qualquer processamento</div>
+  </div>
+  <div class="cols cols-2" style="flex:1;">
+    <div style="display:flex;flex-direction:column;gap:16px;">
+      <pre style="font-size:.8rem;">LOSS_PROBABILITY = <span class="num">0.10</span>
+
+<span class="kw">def</span> <span class="fn">handle_packet</span>(<span class="acc">self</span>, packet):
+  ptype  = packet.<span class="fn">get</span>(<span class="str">"type"</span>)
+  seq    = packet.<span class="fn">get</span>(<span class="str">"seq"</span>)
+  origin = packet.<span class="fn">get</span>(<span class="str">"origin"</span>)
+  dest   = packet.<span class="fn">get</span>(<span class="str">"destination"</span>)
+
+  <span class="cm"># ── Descarte aleatório (fase 7) ──────</span>
+  <span class="kw">if</span> random.<span class="fn">random</span>() < LOSS_PROBABILITY:
+    <span class="acc">self</span>.logger.<span class="fn">info</span>(
+      <span class="str">"[DESCARTE] %s Seq %s ..."</span>, ptype, seq)
+    <span class="fn">print</span>(<span class="str">f"Roteador {<span class="acc">self</span>.id} descartou ..."</span>)
+    <span class="kw">return</span>         <span class="cm"># pacote simplesmente some</span>
+
+  <span class="cm"># ── Despacho ─────────────────────────</span>
+  <span class="kw">if</span>   ptype == <span class="str">"DATA"</span>: <span class="acc">self</span>.<span class="fn">_handle_data</span>(packet)
+  <span class="kw">elif</span> ptype == <span class="str">"ACK"</span>:  <span class="acc">self</span>.<span class="fn">_handle_ack</span>(packet)</pre>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div class="card">
+        <h3>Onde ocorre o descarte</h3>
+        <p style="font-size:.83rem;color:var(--muted);">Em <strong style="color:var(--text)">qualquer roteador que receba o pacote</strong> — incluindo intermediários. Isso simula perda em qualquer enlace da rede, não só na origem ou destino.</p>
+      </div>
+      <div class="card">
+        <h3>Aplica-se a DATA e ACK</h3>
+        <p style="font-size:.83rem;color:var(--muted);">O descarte acontece <strong style="color:var(--text)">antes</strong> do <code style="color:var(--fn)">if ptype ==</code>. Isso cobre o caso do slide 3-64 do Kurose/Ross: o ACK de retorno pode se perder, forçando o destino a reenviar o ACK quando receber o DATA duplicado.</p>
+      </div>
+      <div class="card">
+        <h3>Testando com mais perdas</h3>
+        <pre style="font-size:.78rem;padding:10px;">LOSS_PROBABILITY = <span class="num">0.50</span>  <span class="cm"># linha 11</span>
+<span class="cm"># Reinicie: make stop && make start</span></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ SLIDE 12 -->
+<div class="slide" id="s12">
+  <div class="slide-title">router.py — Encaminhamento hop-a-hop
+    <div class="slide-subtitle">_handle_data e _handle_ack — cada roteador decide o próximo salto</div>
+  </div>
+  <div class="cols cols-2" style="flex:1;">
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <h3>_handle_data — pacote DATA chegou</h3>
+      <pre style="font-size:.78rem;"><span class="kw">def</span> <span class="fn">_handle_data</span>(<span class="acc">self</span>, packet):
+  dest = packet[<span class="str">"destination"</span>]
+
+  <span class="kw">if</span> dest == <span class="acc">self</span>.id:
+    <span class="acc">self</span>.<span class="fn">_deliver_packet</span>(packet)  <span class="cm"># chegou!</span>
+    <span class="kw">return</span>
+
+  next_hop = <span class="acc">self</span>.forwarding_table.<span class="fn">get</span>(dest)
+  <span class="acc">self</span>.<span class="fn">send_packet</span>(next_hop, packet)
+  <span class="acc">self</span>.logger.<span class="fn">info</span>(<span class="str">"[ENCAMINHADA] ..."</span>)</pre>
+      <h3 style="margin-top:4px;">_handle_ack — ACK de retorno</h3>
+      <pre style="font-size:.78rem;"><span class="kw">def</span> <span class="fn">_handle_ack</span>(<span class="acc">self</span>, packet):
+  dest = packet[<span class="str">"destination"</span>]  <span class="cm"># origem do DATA</span>
+
+  <span class="kw">if</span> dest == <span class="acc">self</span>.id:
+    <span class="acc">self</span>.saw.<span class="fn">on_ack</span>(packet[<span class="str">"seq"</span>])  <span class="cm"># desbloqueia!</span>
+    <span class="kw">return</span>
+
+  next_hop = <span class="acc">self</span>.forwarding_table.<span class="fn">get</span>(dest)
+  <span class="acc">self</span>.<span class="fn">send_packet</span>(next_hop, packet)</pre>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div class="card">
+        <h3>ACK é roteado como qualquer pacote</h3>
+        <p style="font-size:.83rem;color:var(--muted);">O campo <code style="color:var(--str)">destination</code> do ACK é a <strong style="color:var(--text)">origem do DATA</strong>. Cada roteador intermediário consulta <code style="color:var(--acc2)">forwarding_table[destination]</code> para encaminhar o ACK de volta.</p>
+      </div>
+      <div class="card">
+        <h3>Exemplo: ACK de R5 → R1</h3>
+        <ul style="font-size:.82rem;">
+          <li>R5 envia ACK com dest=1 → next_hop=R3</li>
+          <li>R3 recebe ACK com dest=1 → next_hop=R1</li>
+          <li>R1 recebe ACK com dest=1 == self.id → <code style="color:var(--acc2)">saw.on_ack(seq)</code></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>send_packet — o primitivo de envio</h3>
+        <pre style="font-size:.78rem;padding:10px;"><span class="kw">def</span> <span class="fn">send_packet</span>(<span class="acc">self</span>, next_hop, packet):
+  info = <span class="acc">self</span>.routers[next_hop]
+  <span class="acc">self</span>.sock.<span class="fn">sendto</span>(
+    <span class="fn">serialize</span>(packet),
+    (info[<span class="str">"ip"</span>], info[<span class="str">"port"</span>]))</pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ SLIDE 13 -->
+<div class="slide" id="s13">
+  <div class="slide-title">router.py — Entrega e Deduplicação
+    <div class="slide-subtitle">_deliver_packet garante que a mensagem é entregue exatamente uma vez</div>
+  </div>
+  <div class="cols cols-2" style="flex:1;">
+    <pre style="font-size:.78rem;"><span class="kw">def</span> <span class="fn">_deliver_packet</span>(<span class="acc">self</span>, packet):
+  origin  = packet[<span class="str">"origin"</span>]
+  seq     = packet[<span class="str">"seq"</span>]
+  payload = packet[<span class="str">"payload"</span>]
+
+  <span class="cm"># ── Deduplicação ────────────────────────</span>
+  <span class="kw">if</span> <span class="acc">self</span>.last_received_seq.<span class="fn">get</span>(origin) == seq:
+    <span class="acc">self</span>.<span class="fn">_send_ack</span>(seq, origin)  <span class="cm"># reenvia ACK</span>
+    <span class="kw">return</span>   <span class="cm"># NÃO entrega de novo</span>
+
+  <span class="cm"># ── Entrega ──────────────────────────────</span>
+  <span class="acc">self</span>.last_received_seq[origin] = seq
+  <span class="acc">self</span>.logger.<span class="fn">info</span>(<span class="str">'[RECEBIDA] Seq %s ...'</span>, seq)
+  <span class="fn">print</span>(<span class="str">f'Roteador {<span class="acc">self</span>.id} recebeu ...'</span>)
+
+  <span class="acc">self</span>.<span class="fn">_send_ack</span>(seq, origin)
+
+<span class="kw">def</span> <span class="fn">_send_ack</span>(<span class="acc">self</span>, seq, origin):
+  ack_next_hop = <span class="acc">self</span>.forwarding_table[origin]
+  ack = <span class="fn">make_ack</span>(seq, <span class="acc">self</span>.id, origin)
+  <span class="acc">self</span>.<span class="fn">send_packet</span>(ack_next_hop, ack)
+  <span class="acc">self</span>.logger.<span class="fn">info</span>(<span class="str">"[ACK_ENVIADO] ..."</span>)</pre>
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div class="card">
+        <h3>Por que a deduplicação é necessária?</h3>
+        <p style="font-size:.83rem;color:var(--muted);">Se o ACK se perder, a origem faz retransmissão. O destino recebe o mesmo DATA pela segunda vez. Sem deduplicação, entregaria a mesma mensagem duas vezes ao usuário.</p>
+      </div>
+      <div class="card">
+        <h3>Como funciona</h3>
+        <ul style="font-size:.83rem;">
+          <li><code style="color:var(--acc2)">last_received_seq[origin]</code> guarda o último seq entregue por cada origem</li>
+          <li>Se o seq chegou de novo → ACK duplicado perdido → reenvia ACK sem entregar</li>
+          <li>Se o seq é novo → entrega e atualiza <code style="color:var(--acc2)">last_received_seq</code></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>ACK separado do fluxo de entrega</h3>
+        <p style="font-size:.83rem;color:var(--muted);"><code style="color:var(--fn)">_send_ack</code> é chamado em ambos os casos (duplicata e entrega nova), garantindo que a origem <strong style="color:var(--text)">sempre</strong> receba um ACK e saia do loop de retransmissão.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ SLIDE 14 -->
+<div class="slide" id="s14">
+  <div class="slide-title">reliability.py — Stop-and-Wait
+    <div class="slide-subtitle">Sincronização entre thread principal e thread listener via threading.Event</div>
+  </div>
+  <div class="cols cols-2" style="flex:1;">
+    <pre style="font-size:.8rem;"><span class="kw">import</span> threading
+
+<span class="kw">class</span> <span class="cls">StopAndWait</span>:
+  <span class="kw">def</span> <span class="fn">__init__</span>(<span class="acc">self</span>):
+    <span class="acc">self</span>.pending_seq = <span class="kw">None</span>
+    <span class="acc">self</span>.lock      = threading.<span class="cls">Lock</span>()
+    <span class="acc">self</span>.ack_event = threading.<span class="cls">Event</span>()
+
+  <span class="kw">def</span> <span class="fn">set_pending</span>(<span class="acc">self</span>, seq):
+    <span class="kw">with</span> <span class="acc">self</span>.lock:
+      <span class="acc">self</span>.pending_seq = seq
+      <span class="acc">self</span>.ack_event.<span class="fn">clear</span>()   <span class="cm"># arma o evento</span>
+
+  <span class="kw">def</span> <span class="fn">on_ack</span>(<span class="acc">self</span>, seq):        <span class="cm"># chamado pelo listener</span>
+    <span class="kw">with</span> <span class="acc">self</span>.lock:
+      <span class="kw">if</span> <span class="acc">self</span>.pending_seq == seq:
+        <span class="acc">self</span>.pending_seq = <span class="kw">None</span>
+        <span class="acc">self</span>.ack_event.<span class="fn">set</span>()   <span class="cm"># sinaliza!</span>
+        <span class="kw">return</span> <span class="kw">True</span>
+    <span class="kw">return</span> <span class="kw">False</span>
+
+  <span class="kw">def</span> <span class="fn">wait_for_ack</span>(<span class="acc">self</span>, timeout=<span class="num">3</span>):  <span class="cm"># bloqueante</span>
+    <span class="kw">return</span> <span class="acc">self</span>.ack_event.<span class="fn">wait</span>(timeout=timeout)</pre>
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div class="card">
+        <h3>threading.Event vs sleep</h3>
+        <table style="font-size:.8rem;">
+          <tr><th>Abordagem</th><th>ACK em 50ms</th><th>Timeout 3s</th></tr>
+          <tr><td><code style="color:var(--acc2)">Event.wait(3)</code></td><td style="color:var(--acc2)">retorna em 50ms</td><td style="color:var(--danger)">retorna em 3s</td></tr>
+          <tr><td><code style="color:var(--danger)">sleep(3)</code></td><td style="color:var(--danger)">espera 3s mesmo assim</td><td style="color:var(--danger)">espera 3s</td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <h3>threading.Lock — proteção da race condition</h3>
+        <p style="font-size:.83rem;color:var(--muted);">Tanto <code style="color:var(--fn)">set_pending</code> (thread principal) quanto <code style="color:var(--fn)">on_ack</code> (thread listener) acessam <code style="color:var(--acc2)">pending_seq</code>. O Lock garante que nunca sejam executados simultaneamente.</p>
+      </div>
+      <div class="card">
+        <h3>ACK de seq errado é ignorado</h3>
+        <p style="font-size:.83rem;color:var(--muted);"><code style="color:var(--fn)">on_ack</code> só sinaliza se <code style="color:var(--acc2)">pending_seq == seq</code>. ACKs de mensagens antigas (que podem chegar atrasados na rede) não interferem.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ SLIDE 15 -->
+<div class="slide" id="s15">
+  <div class="slide-title">RDT 3.0 — Fluxo Completo
+    <div class="slide-subtitle">Cenário sem perdas e cenário com descarte</div>
+  </div>
+  <div class="cols cols-2" style="flex:1;gap:32px;">
+    <div class="card" style="display:flex;flex-direction:column;gap:10px;">
+      <h3>Sem perdas</h3>
+      <div style="font-family:monospace;font-size:.78rem;line-height:2;color:var(--muted);">
+        <span style="color:var(--accent);">R1</span>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+        <span style="color:var(--accent2);">R3</span>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+        <span style="color:var(--accent);">R5</span><br>
+        <span style="color:var(--accent);">|</span>
+        <span style="color:var(--accent2);">──DATA seq=1──▶</span>
+        <span style="color:var(--accent2);">|</span>
+        <span style="color:var(--accent2);">──DATA seq=1──▶</span>
+        <span style="color:var(--accent);">|</span><br>
+        <span style="color:var(--accent);">|</span>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+        <span style="color:var(--accent2);">|</span>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+        entrega
+        <span style="color:var(--accent);">|</span><br>
+        <span style="color:var(--accent);">|</span>
+        <span style="color:var(--warn);">◀──ACK seq=1──</span>
+        <span style="color:var(--accent2);">|</span>
+        <span style="color:var(--warn);">◀──ACK seq=1──</span>
+        <span style="color:var(--accent);">|</span><br>
+        <span style="color:var(--accent2);">✓ entregue</span>
+      </div>
+    </div>
+    <div class="card" style="display:flex;flex-direction:column;gap:10px;">
+      <h3>Com descarte de DATA em R3</h3>
+      <div style="font-family:monospace;font-size:.78rem;line-height:2;color:var(--muted);">
+        <span style="color:var(--accent);">R1</span>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+        <span style="color:var(--accent2);">R3</span>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+        <span style="color:var(--accent);">R5</span><br>
+        <span style="color:var(--accent);">|</span>
+        <span style="color:var(--accent2);">──DATA seq=1──▶</span>
+        <span style="color:var(--danger);">✗ DESCARTE</span>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+        <span style="color:var(--accent);">|</span><br>
+        <span style="color:var(--accent);">|</span>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+        <span style="color:var(--danger);">timeout 3s</span>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+        <span style="color:var(--accent);">|</span><br>
+        <span style="color:var(--accent);">|</span>
+        <span style="color:var(--accent2);">──DATA seq=1──▶</span>
+        <span style="color:var(--accent2);">|</span>
+        <span style="color:var(--accent2);">──DATA seq=1──▶</span>
+        <span style="color:var(--accent);">|</span><br>
+        <span style="color:var(--accent);">|</span>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+        <span style="color:var(--accent2);">|</span>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+        entrega
+        <span style="color:var(--accent);">|</span><br>
+        <span style="color:var(--accent);">|</span>
+        <span style="color:var(--warn);">◀──ACK seq=1──</span>
+        <span style="color:var(--accent2);">|</span>
+        <span style="color:var(--warn);">◀──ACK seq=1──</span>
+        <span style="color:var(--accent);">|</span><br>
+        <span style="color:var(--accent2);">✓ entregue</span>
+      </div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:16px;padding:14px 20px;">
+    <p style="font-size:.83rem;color:var(--muted);">
+      <strong style="color:var(--text)">RDT 3.0 (Kurose/Ross)</strong> — canal com erros <em>e</em> perdas. Solução: timeout + retransmissão + número de sequência para deduplicação. Implementado exatamente como nos slides da disciplina.
+    </p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ SLIDE 16 -->
+<div class="slide" id="s16">
+  <div class="slide-title">logger.py — Eventos Registrados
+    <div class="slide-subtitle">7 categorias de log — um arquivo por roteador em logs/router_N.log</div>
+  </div>
+  <div class="log-grid" style="flex:1;">
+    <div class="log-item">
+      <div class="log-tag" style="color:#60a5fa;">[ENVIADA]</div>
+      <div class="log-desc">Mensagem originada neste roteador — registra seq, destino e payload</div>
+      <pre style="font-size:.7rem;margin-top:6px;padding:8px;">2026-05-18 16:40:12 [ENVIADA]      Seq 1 destino 5 payload="Ola"</pre>
+    </div>
+    <div class="log-item">
+      <div class="log-tag" style="color:#34d399;">[ENCAMINHADA]</div>
+      <div class="log-desc">Pacote de terceiro repassado adiante — registra origem, destino e próximo salto</div>
+      <pre style="font-size:.7rem;margin-top:6px;padding:8px;">2026-05-18 16:40:12 [ENCAMINHADA]  Seq 1 origem 1 destino 5 proximo_salto 5</pre>
+    </div>
+    <div class="log-item">
+      <div class="log-tag" style="color:#818cf8;">[RECEBIDA]</div>
+      <div class="log-desc">Mensagem cujo destino final é este roteador — registra seq, origem e payload</div>
+      <pre style="font-size:.7rem;margin-top:6px;padding:8px;">2026-05-18 16:40:13 [RECEBIDA]     Seq 1 origem 1 payload="Ola"</pre>
+    </div>
+    <div class="log-item">
+      <div class="log-tag" style="color:#f87171;">[DESCARTE]</div>
+      <div class="log-desc">Pacote descartado pelo mecanismo de 10% — aplica-se a DATA e ACK</div>
+      <pre style="font-size:.7rem;margin-top:6px;padding:8px;">2026-05-18 16:40:15 [DESCARTE]     DATA Seq 2 origem 1 destino 5</pre>
+    </div>
+    <div class="log-item">
+      <div class="log-tag" style="color:#fdba74;">[ACK_ENVIADO]</div>
+      <div class="log-desc">ACK enviado pelo destino final de volta à origem</div>
+      <pre style="font-size:.7rem;margin-top:6px;padding:8px;">2026-05-18 16:40:13 [ACK_ENVIADO]  Seq 1 para origem 1</pre>
+    </div>
+    <div class="log-item">
+      <div class="log-tag" style="color:#fdba74;">[ACK_RECEBIDO]</div>
+      <div class="log-desc">ACK recebido pela origem — mensagem confirmada como entregue</div>
+      <pre style="font-size:.7rem;margin-top:6px;padding:8px;">2026-05-18 16:40:13 [ACK_RECEBIDO] Seq 1 de destino 5</pre>
+    </div>
+    <div class="log-item" style="grid-column:1/3;">
+      <div class="log-tag" style="color:#f87171;">[REENVIO]</div>
+      <div class="log-desc">Timeout de 3s disparou — origem reenvia o mesmo pacote com o mesmo número de sequência</div>
+      <pre style="font-size:.7rem;margin-top:6px;padding:8px;">2026-05-18 16:40:18 [REENVIO]      Seq 2 destino 5 tentativa 2</pre>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ SLIDE 17 -->
+<div class="slide" id="s17">
+  <div class="slide-title">Fluxo Completo: R1 → R5
+    <div class="slide-subtitle">Passo a passo de um send 5 "Ola roteador 5"</div>
+  </div>
+  <div class="flow-steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-content">
+        <strong>R1: comando recebido</strong>
+        <p><code>send 5 Ola roteador 5</code> — valida 100 chars, calcula path=[1,3,5], next_hop=3, monta pacote DATA seq=1</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-content">
+        <strong>R1: envia via UDP e aguarda ACK</strong>
+        <p><code>saw.set_pending(1)</code> — envia para 127.0.0.1:25003 — <code>saw.wait_for_ack(timeout=3)</code> bloqueia a thread principal</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-content">
+        <strong>R3: listener recebe DATA seq=1</strong>
+        <p>10% de chance de descartar. Se não descarta: dest=5 ≠ self.id=3 → forwarding_table[5]=5 → repassa para 127.0.0.1:25005. Loga [ENCAMINHADA].</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-content">
+        <strong>R5: listener recebe DATA seq=1</strong>
+        <p>dest=5 == self.id=5 → <code>_deliver_packet</code> — seq não duplicado → entrega ao usuário, loga [RECEBIDA]</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">5</div>
+      <div class="step-content">
+        <strong>R5: envia ACK seq=1 → R3 → R1</strong>
+        <p>make_ack(1, 5, 1) → forwarding_table[1]=3 → envia para R3. R3 consulta forwarding_table[1]=1 → repassa para R1. Loga [ACK_ENVIADO].</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">6</div>
+      <div class="step-content">
+        <strong>R1: listener recebe ACK seq=1</strong>
+        <p><code>saw.on_ack(1)</code> → <code>ack_event.set()</code> → desbloqueia <code>wait_for_ack</code> na thread principal → loga [ACK_RECEBIDO] → loop encerrado</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ SLIDE 18 -->
+<div class="slide" id="s18">
+  <div class="slide-title">Como Executar
+    <div class="slide-subtitle">Makefile com targets para todos os cenários</div>
+  </div>
+  <div class="cols cols-2" style="flex:1;gap:24px;">
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div class="card">
+        <h3>Subir os 5 roteadores</h3>
+        <pre style="font-size:.85rem;padding:14px;"><span class="cm"># abre tmux com 5 panes (ou gnome-terminal)</span>
+$ make start
+
+<span class="cm"># no pane do Roteador 1:</span>
+send 5 Ola roteador 5
+
+<span class="cm"># encerrar tudo</span>
+$ make stop</pre>
+      </div>
+      <div class="card">
+        <h3>Teste automático</h3>
+        <pre style="font-size:.85rem;padding:14px;"><span class="cm"># sobe, testa R1→R5 e mostra resultado</span>
+$ make test</pre>
+      </div>
+      <div class="card">
+        <h3>Utilitários</h3>
+        <pre style="font-size:.85rem;padding:14px;">$ make logs    <span class="cm"># exibe todos os .log</span>
+$ make status  <span class="cm"># mostra portas ativas</span>
+$ make clean   <span class="cm"># remove logs e cache</span></pre>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div class="card">
+        <h3>Navegar entre panes no tmux</h3>
+        <table style="font-size:.82rem;">
+          <tr><td><code>Ctrl+b → ←→↑↓</code></td><td>muda de pane</td></tr>
+          <tr><td><code>Ctrl+b → q</code></td><td>número dos panes</td></tr>
+          <tr><td><code>Ctrl+b → z</code></td><td>zoom no pane</td></tr>
+          <tr><td><code>Ctrl+b → d</code></td><td>desanexa (routers continuam)</td></tr>
+          <tr><td><code>make attach</code></td><td>reconecta à sessão</td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <h3>Instalar tmux (se necessário)</h3>
+        <pre style="font-size:.82rem;padding:10px;">sudo apt install tmux</pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ SLIDE 19 -->
+<div class="slide" id="s19">
+  <div class="slide-title">Checklist de Requisitos
+    <div class="slide-subtitle">Todos os 21 itens da atividade implementados</div>
+  </div>
+  <div class="check-grid">
+    <div class="check-item">Roteador recebe ID via linha de comando</div>
+    <div class="check-item">Carrega roteador.config</div>
+    <div class="check-item">Carrega enlaces.config</div>
+    <div class="check-item">Topologia com pelo menos 5 nós</div>
+    <div class="check-item">Usa apenas sockets UDP</div>
+    <div class="check-item">Implementa Dijkstra</div>
+    <div class="check-item">Monta tabela de encaminhamento</div>
+    <div class="check-item">Mensagem limitada a 100 caracteres</div>
+    <div class="check-item">Encaminha mensagem salto a salto</div>
+    <div class="check-item">Imprime status no console em cada salto</div>
+    <div class="check-item">Gera logs locais por roteador</div>
+    <div class="check-item">Registra mensagens enviadas [ENVIADA]</div>
+    <div class="check-item">Registra mensagens encaminhadas [ENCAMINHADA]</div>
+    <div class="check-item">Registra mensagens recebidas [RECEBIDA]</div>
+    <div class="check-item">Registra descartes [DESCARTE]</div>
+    <div class="check-item">Implementa 10% de perda (DATA e ACK)</div>
+    <div class="check-item">Implementa ACK fim-a-fim</div>
+    <div class="check-item">Implementa timeout com reenvio [REENVIO]</div>
+    <div class="check-item">Implementa stop-and-wait</div>
+    <div class="check-item">Implementa deduplicação no destino</div>
+    <div class="check-item">README explica execução e testes</div>
+  </div>
+</div>
+
+</div><!-- /deck -->
+
+<!-- Nav -->
+<div class="nav">
+  <button onclick="go(-1)" title="Anterior">&#8592;</button>
+  <span class="counter" id="counter">1 / 19</span>
+  <button onclick="go(1)" title="Próximo">&#8594;</button>
+</div>
+<div class="progress" id="progress"></div>
+
+<script>
+const slides = document.querySelectorAll('.slide');
+const total  = slides.length;
+let cur = 0;
+
+function show(n) {
+  slides[cur].classList.remove('active');
+  cur = (n + total) % total;
+  slides[cur].classList.add('active');
+  document.getElementById('counter').textContent = `${cur+1} / ${total}`;
+  document.getElementById('progress').style.width = `${(cur+1)/total*100}%`;
+}
+
+function go(dir) { show(cur + dir); }
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === ' ') go(1);
+  if (e.key === 'ArrowLeft')  go(-1);
+});
+
+// Touch swipe
+let tx = 0;
+document.addEventListener('touchstart', e => tx = e.touches[0].clientX);
+document.addEventListener('touchend',   e => {
+  const dx = e.changedTouches[0].clientX - tx;
+  if (Math.abs(dx) > 50) go(dx < 0 ? 1 : -1);
+});
+
+show(0);
+</script>
+</body>
+</html>
