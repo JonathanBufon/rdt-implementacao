@@ -51,7 +51,10 @@ class Router:
         while self.running:
             try:
                 command = input()
-            except (EOFError, KeyboardInterrupt):
+            except EOFError:
+                # stdin fechado (ex: pipe encerrado) — mantém o roteador ouvindo
+                break
+            except KeyboardInterrupt:
                 self.stop()
                 break
 
