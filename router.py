@@ -1,11 +1,14 @@
+import random
 import socket
 import threading
 
 from config_loader import load_routers_config, load_links_config
 from graph import build_graph, build_forwarding_table, shortest_path
 from logger import get_logger
-from packet import deserialize, make_data, serialize
+from packet import deserialize, make_ack, make_data, serialize
 from reliability import StopAndWait
+
+LOSS_PROBABILITY = 0.10
 
 
 class Router:
@@ -91,68 +94,124 @@ class Router:
             print(f"Nao ha rota do roteador {self.id} para o destino {destination}.")
             return
 
-        self.seq += 1
-        packet = make_data(self.seq, self.id, destination, payload, path)
         next_hop = self.forwarding_table.get(destination)
         if next_hop is None:
             print(f"Nao ha proximo salto para o destino {destination}.")
             return
 
-        self.send_packet(next_hop, packet)
-        self.logger.info(
-            '[ENVIADA]      Seq %s destino %s payload="%s"',
-            packet["seq"],
-            destination,
-            payload,
-        )
-        print(
-            f"Roteador {self.id} encaminhando mensagem (Seq: {packet['seq']}) "
-            f"para o destino {destination} via proximo salto {next_hop}"
-        )
+        self.seq += 1
+        seq = self.seq
+        packet = make_data(seq, self.id, destination, payload, path)
+
+        self.saw.set_pending(seq)
+        attempt = 0
+
+        while True:
+            attempt += 1
+            if attempt == 1:
+                self.logger.info('[ENVIADA]      Seq %s destino %s payload="%s"', seq, destination, payload)
+                print(
+                    f"Roteador {self.id} encaminhando mensagem (Seq: {seq}) "
+                    f"para o destino {destination} via proximo salto {next_hop}"
+                )
+            else:
+                self.logger.info("[REENVIO]      Seq %s destino %s tentativa %s", seq, destination, attempt)
+                print(f"Roteador {self.id} timeout (Seq: {seq}) — reenviando tentativa {attempt}")
+
+            self.send_packet(next_hop, packet)
+
+            if self.saw.wait_for_ack(timeout=3):
+                self.logger.info("[ACK_RECEBIDO] Seq %s de destino %s", seq, destination)
+                print(f"Roteador {self.id} recebeu ACK (Seq: {seq}) — mensagem entregue com sucesso")
+                break
 
     def handle_packet(self, packet):
-        if packet.get("type") != "DATA":
-            print(f"Roteador {self.id} recebeu pacote desconhecido: {packet}")
+        ptype = packet.get("type")
+        seq = packet.get("seq")
+        origin = packet.get("origin")
+        dest = packet.get("destination")
+
+        if random.random() < LOSS_PROBABILITY:
+            self.logger.info(
+                "[DESCARTE]     %s Seq %s origem %s destino %s",
+                ptype, seq, origin, dest,
+            )
+            print(f"Roteador {self.id} descartou pacote {ptype} (Seq: {seq}) — perda simulada")
             return
 
+        if ptype == "DATA":
+            self._handle_data(packet)
+        elif ptype == "ACK":
+            self._handle_ack(packet)
+        else:
+            print(f"Roteador {self.id} recebeu pacote desconhecido tipo '{ptype}'")
+
+    def _handle_data(self, packet):
         destination = packet["destination"]
+
         if destination == self.id:
-            self.deliver_packet(packet)
+            self._deliver_packet(packet)
             return
 
         next_hop = self.forwarding_table.get(destination)
         if next_hop is None:
             print(
-                f"Roteador {self.id} nao possui rota para o destino {destination}; "
-                f"pacote Seq {packet['seq']} descartado."
+                f"Roteador {self.id} nao possui rota para {destination}; "
+                f"DATA Seq {packet['seq']} descartado."
             )
             return
 
         self.send_packet(next_hop, packet)
         self.logger.info(
             "[ENCAMINHADA]  Seq %s origem %s destino %s proximo_salto %s",
-            packet["seq"],
-            packet["origin"],
-            destination,
-            next_hop,
+            packet["seq"], packet["origin"], destination, next_hop,
         )
         print(
-            f"Roteador {self.id} encaminhou mensagem (Seq: {packet['seq']}) "
-            f"de {packet['origin']} para {destination} via proximo salto {next_hop}"
+            f"Roteador {self.id} encaminhando mensagem (Seq: {packet['seq']}) "
+            f"para o destino {destination} via proximo salto {next_hop}"
         )
 
-    def deliver_packet(self, packet):
+    def _handle_ack(self, packet):
+        destination = packet["destination"]  # original DATA sender
+
+        if destination == self.id:
+            # Unblocks saw.wait_for_ack() in send_message()
+            self.saw.on_ack(packet["seq"])
+            return
+
+        next_hop = self.forwarding_table.get(destination)
+        if next_hop is None:
+            print(f"Roteador {self.id} nao possui rota para ACK destino {destination}.")
+            return
+
+        self.send_packet(next_hop, packet)
+
+    def _deliver_packet(self, packet):
         origin = packet["origin"]
         seq = packet["seq"]
         payload = packet["payload"]
+
+        # Deduplication: duplicate DATA means the previous ACK was lost; resend ACK only
+        if self.last_received_seq.get(origin) == seq:
+            self._send_ack(seq, origin)
+            return
+
         self.last_received_seq[origin] = seq
-        self.logger.info(
-            '[RECEBIDA]     Seq %s origem %s payload="%s"',
-            seq,
-            origin,
-            payload,
-        )
+        self.logger.info('[RECEBIDA]     Seq %s origem %s payload="%s"', seq, origin, payload)
         print(f'Roteador {self.id} recebeu mensagem (Seq: {seq}) de {origin}: "{payload}"')
+
+        self._send_ack(seq, origin)
+
+    def _send_ack(self, seq, origin):
+        ack_next_hop = self.forwarding_table.get(origin)
+        if ack_next_hop is None:
+            print(f"Roteador {self.id} nao possui rota de volta para {origin}; ACK nao enviado.")
+            return
+
+        ack = make_ack(seq, self.id, origin)
+        self.send_packet(ack_next_hop, ack)
+        self.logger.info("[ACK_ENVIADO]  Seq %s para origem %s", seq, origin)
+        print(f"Roteador {self.id} enviou ACK (Seq: {seq}) para {origin} via proximo salto {ack_next_hop}")
 
     def send_packet(self, next_hop, packet):
         router_info = self.routers[next_hop]

@@ -236,34 +236,34 @@ Limite de payload: **100 caracteres**. Mensagens maiores são rejeitadas antes d
 
 ## 9. Ordem de implementação (fases)
 
-### Fase 1 — Base do projeto
+### ✅ Fase 1 — Base do projeto
 Criar estrutura de arquivos. Critério: `python3 main.py 1` imprime:
 ```
 Roteador 1 iniciado em 127.0.0.1:25001
 ```
 
-### Fase 2 — Leitura de configuração
+### ✅ Fase 2 — Leitura de configuração
 Implementar `load_routers_config()` e `load_links_config()`. Critério: estruturas corretas em memória.
 
-### Fase 3 — Grafo e Dijkstra
+### ✅ Fase 3 — Grafo e Dijkstra
 Implementar `graph.shortest_path(1, 5)` → `[1, 3, 5]` e tabela de encaminhamento.
 
-### Fase 4 — Socket UDP básico
+### ✅ Fase 4 — Socket UDP básico
 Thread de escuta + envio manual. Critério: R1 envia para R3, R3 imprime que recebeu.
 
-### Fase 5 — Encaminhamento hop-a-hop
+### ✅ Fase 5 — Encaminhamento hop-a-hop
 Implementar forwarding. Critério: mensagem de R1 chega em R5 passando por R3, com prints em cada salto.
 
-### Fase 6 — Logs
+### ✅ Fase 6 — Logs
 Adicionar log local em todos os eventos. Critério: arquivos `logs/router_*.log` com eventos corretos.
 
-### Fase 7 — Descarte aleatório
+### ✅ Fase 7 — Descarte aleatório
 Adicionar probabilidade de 10%. Critério: durante testes repetidos, aparece `[DESCARTE]` nos logs.
 
-### Fase 8 — ACK e stop-and-wait
+### ✅ Fase 8 — ACK e stop-and-wait
 Implementar `pending_ack`, timeout, reenvio e deduplicação. Critério: mensagem chega mesmo com descartes, sem duplicação de entrega.
 
-### Fase 9 — README e testes finais
+### ✅ Fase 9 — README e testes finais
 Documentar como rodar, configurar topologia, testar perdas e verificar logs.
 
 ---
@@ -287,25 +287,25 @@ Informacional apenas. O roteamento usa a forwarding table local de cada roteador
 ## 11. Checklist final da atividade
 
 ```
-[ ] Roteador recebe ID via linha de comando
-[ ] Carrega roteador.config
-[ ] Carrega enlaces.config
-[ ] Topologia tem pelo menos 5 nós
-[ ] Usa apenas sockets UDP
-[ ] Implementa Dijkstra
-[ ] Monta tabela de encaminhamento
-[ ] Mensagem limitada a 100 caracteres
-[ ] Encaminha mensagem salto a salto
-[ ] Imprime status no console em cada salto
-[ ] Gera logs locais por roteador
-[ ] Registra mensagens enviadas
-[ ] Registra mensagens encaminhadas
-[ ] Registra mensagens recebidas
-[ ] Registra descartes
-[ ] Implementa 10% de perda aleatória (DATA e ACK)
-[ ] Implementa ACK fim-a-fim
-[ ] Implementa timeout com reenvio
-[ ] Implementa stop-and-wait
-[ ] Implementa deduplicação no destino
-[ ] README explica execução e testes
+[x] Roteador recebe ID via linha de comando
+[x] Carrega roteador.config
+[x] Carrega enlaces.config
+[x] Topologia tem pelo menos 5 nós
+[x] Usa apenas sockets UDP
+[x] Implementa Dijkstra
+[x] Monta tabela de encaminhamento
+[x] Mensagem limitada a 100 caracteres
+[x] Encaminha mensagem salto a salto
+[x] Imprime status no console em cada salto
+[x] Gera logs locais por roteador
+[x] Registra mensagens enviadas
+[x] Registra mensagens encaminhadas
+[x] Registra mensagens recebidas
+[x] Registra descartes
+[x] Implementa 10% de perda aleatória (DATA e ACK)
+[x] Implementa ACK fim-a-fim
+[x] Implementa timeout com reenvio
+[x] Implementa stop-and-wait
+[x] Implementa deduplicação no destino
+[x] README explica execução e testes
 ```
