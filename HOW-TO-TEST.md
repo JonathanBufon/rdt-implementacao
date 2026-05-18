@@ -6,6 +6,10 @@ Este guia descreve os testes manuais para verificar cada requisito do sistema.
 
 ## Pré-requisitos
 
+**Via Docker (recomendado — funciona em Windows, Mac e Linux):**
+- Docker Desktop instalado e rodando
+
+**Via local (Linux):**
 - Python 3.8+
 - `make` instalado
 - `tmux` instalado (recomendado): `sudo apt install tmux`
@@ -14,6 +18,16 @@ Este guia descreve os testes manuais para verificar cada requisito do sistema.
 ---
 
 ## Início rápido
+
+### Docker
+
+```bash
+make docker-build          # constrói a imagem (só na primeira vez)
+make docker-run            # sobe os 5 roteadores em tmux no container
+make docker-test           # teste automático sem abrir janelas
+```
+
+### Local (Linux)
 
 ```bash
 make start   # sobe os 5 roteadores
@@ -26,9 +40,106 @@ make clean   # remove logs e __pycache__
 
 ---
 
+## 0. Testando via Docker
+
+> Use esta seção se estiver no **Windows** ou preferir não instalar Python e tmux localmente.
+
+### Pré-requisito
+
+Instale o [Docker Desktop](https://www.docker.com/products/docker-desktop/) e certifique-se de que ele está rodando.
+
+### Passo 1 — Construir a imagem
+
+```bash
+make docker-build
+```
+
+Ou diretamente:
+
+```bash
+docker build -t rdt-p2p .
+```
+
+Isso instala Python 3, tmux e make num container Debian. Só é necessário fazer uma vez.
+
+### Passo 2 — Subir os roteadores interativamente
+
+```bash
+make docker-run
+```
+
+Ou diretamente:
+
+```bash
+docker run -it --rm --name rdt-p2p rdt-p2p
+```
+
+O container abre automaticamente uma sessão tmux com **5 panes**, um por roteador:
+
+```
+┌─────────────┬─────────────┬─────────────┐
+│  Roteador 1 │  Roteador 2 │  Roteador 3 │
+├─────────────┴──────┬──────┴─────────────┤
+│     Roteador 4     │     Roteador 5     │
+└────────────────────┴────────────────────┘
+```
+
+**Navegar entre panes:**
+
+| Atalho | Ação |
+|--------|------|
+| `Ctrl+b` → seta | Move para o pane na direção da seta |
+| `Ctrl+b` → `q` | Mostra número dos panes; digita para ir direto |
+| `Ctrl+b` → `z` | Zoom no pane atual (tela cheia); repete para voltar |
+| `Ctrl+b` → `d` | Sai do container (roteadores continuam rodando) |
+
+Para voltar ao container após `Ctrl+b d`:
+
+```bash
+docker attach rdt-p2p
+```
+
+Para encerrar tudo:
+
+```bash
+docker stop rdt-p2p
+```
+
+### Passo 3 — Enviar uma mensagem
+
+No pane do **Roteador 1**, digite:
+
+```
+send 5 Ola roteador 5
+```
+
+A saída esperada é a mesma descrita na seção 2 abaixo.
+
+### Alternativa — Teste automático sem janelas
+
+```bash
+make docker-test
+```
+
+Ou diretamente:
+
+```bash
+docker run --rm --entrypoint make rdt-p2p test
+```
+
+Executa o teste R1→R5 dentro do container e imprime o resultado no terminal. Não exige interatividade.
+
+### Limpar a imagem
+
+```bash
+make docker-clean
+```
+
+---
+
 ## 1. Iniciando os roteadores
 
-### Com Makefile (recomendado)
+### Com Makefile (recomendado — Linux)
 
 ```bash
 make start
