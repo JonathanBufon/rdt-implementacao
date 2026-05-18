@@ -11,6 +11,8 @@ def main():
     router_id = int(sys.argv[1])
     router = Router(router_id)
     print(f"Roteador {router_id} iniciado em {router.ip}:{router.port}")
+    router.start()
+    router.command_loop()
 
 
 if __name__ == "__main__":
